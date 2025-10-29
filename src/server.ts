@@ -1,0 +1,117 @@
+// // ...existing code...
+// import dotenv from "dotenv";
+// dotenv.config(); // ensure env loaded before other logic
+
+// import mongoose from "mongoose";
+// import app from "./app";
+// import { connectRedis } from "./app/config/redis.config";
+
+// // Load environment variables
+// const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
+// const MONGO_URI = process.env.MONGODB_URI;
+
+// // Database Connection
+// const connectDB = async () => {
+//   if (!MONGO_URI) {
+//     console.error("❌ MONGODB_URI is not defined in environment. Set MONGODB_URI in your .env");
+//     process.exit(1);
+//   }
+
+//   try {
+//     // mongoose v6+ does not need extra options by default
+//     await mongoose.connect(MONGO_URI);
+//     console.log("✅ MongoDB connected successfully");
+//   } catch (error: any) {
+//     console.error("❌ Database connection failed:", error?.message || error);
+//     process.exit(1);
+//   }
+// };
+
+// // Start Server
+// const startServer = async () => {
+//   try {
+//     // Connect to database first
+//     await connectDB();
+
+//     // optional: connect to redis (will no-op if REDIS_HOST not set)
+//     await connectRedis();
+
+//     const server = app.listen(PORT, () => {
+//       console.log(
+//         `🚀 Server running on port ${PORT} in ${
+//           process.env.NODE_ENV || "production"
+//         } mode`
+//       );
+//       console.log(`📡 API Base URL: http://localhost:${PORT}/api/v1`);
+//     });
+
+//     // Handle Errors
+//     process.on("unhandledRejection", (err: any) => {
+//       console.error("❌ Unhandled Promise Rejection:", err?.message || err);
+//       server.close(() => process.exit(1));
+//     });
+
+//     process.on("uncaughtException", (err: any) => {
+//       console.error("❌ Uncaught Exception:", err?.message || err);
+//       process.exit(1);
+//     });
+//   } catch (error: any) {
+//     console.error("❌ Failed to start server:", error?.message || error);
+//     process.exit(1);
+//   }
+// };
+
+// (async () => {
+//   await startServer();
+// })();
+// // ...existing code...
+
+
+// ...existing code...
+import dotenv from "dotenv";
+dotenv.config(); // load .env first
+
+// import { validateEnv } from "./app/config/validateEnv";
+import { initializeDatabase } from "./app/config/database";
+// import { connectRedis } from "./app/config/redis.config";
+import app from "./app";
+import { validateEnv } from "./app/config/validateEnv";
+
+validateEnv(); // throws and exits if required env vars are missing
+
+const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
+
+const startServer = async () => {
+  try {
+    // Connect to MongoDB
+    await initializeDatabase();
+
+    // Optional Redis (will skip if REDIS_HOST not set)
+    // await connectRedis();
+
+    const server = app.listen(PORT, () => {
+      console.log(
+        `🚀 Server running on port ${PORT} in ${process.env.NODE_ENV || "production"} mode`
+      );
+      console.log(`📡 API Base URL: http://localhost:${PORT}/api/v1`);
+    });
+
+    // Graceful handling for unhandled promise rejections
+    process.on("unhandledRejection", (reason: any) => {
+      console.error("❌ Unhandled Promise Rejection:", reason?.message || reason);
+      server.close(() => process.exit(1));
+    });
+
+    // Handle uncaught exceptions
+    process.on("uncaughtException", (err: any) => {
+      console.error("❌ Uncaught Exception:", err?.message || err);
+      process.exit(1);
+    });
+  } catch (error: any) {
+    console.error("❌ Failed to start server:", error?.message || error);
+    process.exit(1);
+  }
+};
+
+startServer();
+// ...existing code...

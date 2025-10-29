@@ -1,0 +1,614 @@
+{
+  "info": {
+    "name": "Career-Code Job Portal API",
+    "description": "Professional Job Portal Backend API - Complete collection with authentication, jobs, applications, and admin management",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "job_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "application_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "item": [
+        {
+          "name": "Server Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Check if the server is running"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register Job Seeker",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.data.tokens.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.data.tokens.refreshToken);",
+                  "    pm.collectionVariables.set('user_id', jsonData.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jobseeker@example.com\",\n  \"password\": \"SecurePass123!\",\n  \"full_name\": \"John Doe\",\n  \"role\": \"job_seeker\",\n  \"phone\": \"+1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register Employer",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"employer@techcorp.com\",\n  \"password\": \"SecurePass123!\",\n  \"full_name\": \"Jane Smith\",\n  \"role\": \"employer\",\n  \"company_name\": \"TechCorp Inc\",\n  \"phone\": \"+1987654321\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@careercode.com\",\n  \"password\": \"AdminPass123!\",\n  \"full_name\": \"Admin User\",\n  \"role\": \"admin\",\n  \"phone\": \"+1555555555\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('access_token', jsonData.data.tokens.accessToken);",
+                  "    pm.collectionVariables.set('refresh_token', jsonData.data.tokens.refreshToken);",
+                  "    pm.collectionVariables.set('user_id', jsonData.data.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jobseeker@example.com\",\n  \"password\": \"SecurePass123!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh-token",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh-token"]
+            }
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/profile",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"SecurePass123!\",\n  \"newPassword\": \"NewSecurePass456!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/change-password",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "change-password"]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "User Management",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["users", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Updated Doe\",\n  \"phone\": \"+1234567899\",\n  \"profile_image\": \"https://example.com/profile.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/users/profile",
+              "host": ["{{base_url}}"],
+              "path": ["users", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/account",
+              "host": ["{{base_url}}"],
+              "path": ["users", "account"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Jobs",
+      "item": [
+        {
+          "name": "Get All Jobs (Public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["jobs"]
+            }
+          }
+        },
+        {
+          "name": "Search Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs?search=developer&location=Remote&job_type=full_time",
+              "host": ["{{base_url}}"],
+              "path": ["jobs"],
+              "query": [
+                {"key": "search", "value": "developer"},
+                {"key": "location", "value": "Remote"},
+                {"key": "job_type", "value": "full_time"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Job by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Job (Employer)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('job_id', jsonData.data.job.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Senior Full Stack Developer\",\n  \"description\": \"We are looking for an experienced full stack developer to join our team. You will work on cutting-edge projects using modern technologies.\",\n  \"requirements\": [\n    \"5+ years of experience with Node.js and React\",\n    \"Strong TypeScript skills\",\n    \"Experience with PostgreSQL\",\n    \"Knowledge of Docker and Kubernetes\"\n  ],\n  \"job_type\": \"full_time\",\n  \"location\": \"Remote\",\n  \"salary_min\": 80000,\n  \"salary_max\": 120000,\n  \"deadline\": \"2025-12-31T23:59:59Z\",\n  \"company_logo\": \"https://example.com/logo.png\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["jobs"]
+            }
+          }
+        },
+        {
+          "name": "Get My Jobs (Employer)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/my/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "my", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Update Job (Employer)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Senior Full Stack Developer (Updated)\",\n  \"status\": \"active\",\n  \"salary_max\": 130000\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Job (Employer)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["jobs", "{{job_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Applications",
+      "item": [
+        {
+          "name": "Apply for Job",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('application_id', jsonData.data.application.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resume_url\": \"https://example.com/resumes/john-doe.pdf\",\n  \"cover_letter\": \"I am very interested in this position and believe my skills align perfectly with your requirements.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/jobs/{{job_id}}/apply",
+              "host": ["{{base_url}}"],
+              "path": ["applications", "jobs", "{{job_id}}", "apply"]
+            }
+          }
+        },
+        {
+          "name": "Get My Applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/my",
+              "host": ["{{base_url}}"],
+              "path": ["applications", "my"]
+            }
+          }
+        },
+        {
+          "name": "Get Applications for Job (Employer)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/jobs/{{job_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["applications", "jobs", "{{job_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Application Status (Employer)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"shortlisted\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["applications", "{{application_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Delete Application",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/applications/{{application_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["applications", "{{application_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "dashboard"]
+            }
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/users",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users"]
+            }
+          }
+        },
+        {
+          "name": "Filter Users by Role",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/users?role=employer&is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users"],
+              "query": [
+                {"key": "role", "value": "employer"},
+                {"key": "is_active", "value": "true"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update User Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isActive\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{user_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "{{user_id}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/users/{{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "users", "{{user_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Get All Jobs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/jobs",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "jobs"]
+            }
+          }
+        },
+        {
+          "name": "Get All Applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{access_token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/applications",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "applications"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
