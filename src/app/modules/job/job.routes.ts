@@ -14,8 +14,8 @@ router.use(authenticate);
 
 router.post(
   '/',
+  authenticate, // MUST run first
   authorize(UserRole.EMPLOYER, UserRole.ADMIN),
-  validate(createJobSchema),
   JobController.createJob
 );
 

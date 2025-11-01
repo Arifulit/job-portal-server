@@ -5,8 +5,10 @@ import { AuthenticatedRequest } from '@/app/types';
 import { Request } from 'express';
 
 export class JobController {
+
   static async createJob(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
+      console.info('createJob req.user:', req.user);
       const job = await JobService.createJob(req.user!.id, req.body);
       ResponseHandler.created(res, 'Job created successfully', { job });
     } catch (error) {
