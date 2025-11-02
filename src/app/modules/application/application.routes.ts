@@ -14,7 +14,7 @@ router.get('/my', authorize(UserRole.JOB_SEEKER), ApplicationController.getMyApp
 router.get(
   '/jobs/:jobId',
   authorize(UserRole.EMPLOYER, UserRole.RECRUITER, UserRole.ADMIN),
-  ApplicationController.getApplicationsByJob
+  (req, res, next) => ApplicationController.getApplicationsByJob(req as any, res, next)
 );
 
 router.put(

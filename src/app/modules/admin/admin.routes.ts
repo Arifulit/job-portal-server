@@ -6,7 +6,8 @@ import { UserRole } from '@/app/types';
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize(UserRole.ADMIN));
+// wrap authorize(...) so it's passed as a RequestHandler and not mistaken for a path overload
+router.use((req, res, next) => authorize(UserRole.ADMIN)(req, res, next));
 
 router.get('/users', AdminController.getAllUsers);
 router.put('/users/:userId/status', AdminController.updateUserStatus);

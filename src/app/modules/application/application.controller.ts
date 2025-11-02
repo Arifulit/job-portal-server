@@ -1,71 +1,84 @@
-import { Response, NextFunction } from 'express';
+// ...existing code...
+import { Request, Response, NextFunction } from 'express';
 import { ApplicationService } from './application.service';
 import { ResponseHandler } from '@/app/utils/response';
 import { AuthenticatedRequest } from '@/app/types';
+import { catchAsync } from '@/app/utils/catchAsync';
 
-export class ApplicationController {
-  static async applyForJob(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const application = await ApplicationService.applyForJob(
-        req.params.jobId,
-        req.user!.id,
-        req.body
-      );
-      ResponseHandler.created(res, 'Application submitted successfully', { application });
-    } catch (error) {
-      next(error);
-    }
+const applyForJob = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async getApplicationsByJob(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const applications = await ApplicationService.getApplicationsByJob(
-        req.params.jobId,
-        req.user!.id,
-        req.user!.role
-      );
-      ResponseHandler.success(res, 'Applications retrieved successfully', {
-        applications,
-        count: applications.length,
-      });
-    } catch (error) {
-      next(error);
-    }
+  const jobId = req.params.jobId;
+  const application = await ApplicationService.applyForJob(jobId, authReq.user.id, req.body);
+  ResponseHandler.created(res, 'Application submitted successfully', { application });
+});
+
+const getApplicationsByJob = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async getMyApplications(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const applications = await ApplicationService.getMyApplications(req.user!.id);
-      ResponseHandler.success(res, 'Applications retrieved successfully', {
-        applications,
-        count: applications.length,
-      });
-    } catch (error) {
-      next(error);
-    }
+  const jobId = req.params.jobId;
+  const applications = await ApplicationService.getApplicationsByJob(jobId, authReq.user.id, authReq.user.role);
+  ResponseHandler.success(res, 'Applications retrieved successfully', {
+    applications,
+    count: Array.isArray(applications) ? applications.length : 0,
+  });
+});
+
+const getMyApplications = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async updateApplicationStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { status } = req.body;
-      const application = await ApplicationService.updateApplicationStatus(
-        req.params.id,
-        status,
-        req.user!.id,
-        req.user!.role
-      );
-      ResponseHandler.success(res, 'Application status updated successfully', { application });
-    } catch (error) {
-      next(error);
-    }
+  const applications = await ApplicationService.getMyApplications(authReq.user.id);
+  ResponseHandler.success(res, 'Applications retrieved successfully', {
+    applications,
+    count: Array.isArray(applications) ? applications.length : 0,
+  });
+});
+
+const updateApplicationStatus = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async deleteApplication(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      await ApplicationService.deleteApplication(req.params.id, req.user!.id);
-      ResponseHandler.success(res, 'Application deleted successfully');
-    } catch (error) {
-      next(error);
-    }
+  const { status } = req.body;
+  const application = await ApplicationService.updateApplicationStatus(
+    req.params.id,
+    status,
+    authReq.user.id,
+    authReq.user.role
+  );
+  ResponseHandler.success(res, 'Application status updated successfully', { application });
+});
+
+const deleteApplication = catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
-}
+
+  await ApplicationService.deleteApplication(req.params.id, authReq.user.id);
+  ResponseHandler.success(res, 'Application deleted successfully');
+});
+
+export const ApplicationController = {
+  applyForJob,
+  getApplicationsByJob,
+  getMyApplications,
+  updateApplicationStatus,
+  deleteApplication,
+};
+// ...existing code...

@@ -1,75 +1,4 @@
-// import { Response, NextFunction } from 'express';
-// import { AuthService } from './auth.service';
-// import { ResponseHandler } from '@/app/utils/response';
-// import { AuthenticatedRequest } from '@/app/types';
-// import { Request } from 'express';
-
-// export class AuthController {
-//   static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
-//     try {
-//       const result = await AuthService.register(req.body);
-//       ResponseHandler.created(res, 'User registered successfully', result);
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-
-//   static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
-//     try {
-//       const result = await AuthService.login(req.body);
-//       ResponseHandler.success(res, 'Login successful', result);
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-
-//   static async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-//     try {
-//       const { refreshToken } = req.body;
-//       const result = await AuthService.refreshAccessToken(refreshToken);
-//       ResponseHandler.success(res, 'Token refreshed successfully', result);
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-
-//   static async logout(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-//     try {
-//       const { refreshToken } = req.body;
-//       await AuthService.logout(req.user!.id, refreshToken);
-//       ResponseHandler.success(res, 'Logged out successfully');
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-
-//   static async changePassword(
-//     req: AuthenticatedRequest,
-//     res: Response,
-//     next: NextFunction
-//   ): Promise<void> {
-//     try {
-//       const { oldPassword, newPassword } = req.body;
-//       await AuthService.changePassword(req.user!.id, oldPassword, newPassword);
-//       ResponseHandler.success(res, 'Password changed successfully');
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-
-//   static async getProfile(
-//     req: AuthenticatedRequest,
-//     res: Response,
-//     next: NextFunction
-//   ): Promise<void> {
-//     try {
-//       ResponseHandler.success(res, 'Profile retrieved successfully', { user: req.user });
-//     } catch (error) {
-//       next(error);
-//     }
-//   }
-// }
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { ResponseHandler } from '@/app/utils/response';
 import { AuthenticatedRequest } from '@/app/types';
@@ -80,105 +9,102 @@ import {
   NotFoundError,
 } from '@/app/utils/errors';
 import { logger } from '@/app/utils/logger';
+import { catchAsync } from '@/app/utils/catchAsync';
 
-export class AuthController {
-  static async register(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { email, password, full_name } = req.body ?? {};
-
-      // quick input validation
-      if (!email || !password || !full_name) {
-        res.status(400).json({
-          success: false,
-          message: 'email, password and full_name are required',
-        });
-        return;
-      }
-
-      const result = await AuthService.register(req.body);
-      ResponseHandler.created(res, 'User registered successfully', result);
-    } catch (error: any) {
-      // log full error for debugging
-      logger.error('AuthController.register error', { message: error?.message, stack: error?.stack });
-
-      // Known error mapping
-      if (error instanceof ConflictError) {
-        res.status(409).json({ success: false, message: error.message });
-        return;
-      }
-      if (error instanceof ValidationError) {
-        res.status(400).json({ success: false, message: error.message });
-        return;
-      }
-      if (error instanceof UnauthorizedError) {
-        res.status(401).json({ success: false, message: error.message });
-        return;
-      }
-      if (error instanceof NotFoundError) {
-        res.status(404).json({ success: false, message: error.message });
-        return;
-      }
-
-      // Fallback: don't leak internals in production
-      const msg =
-        process.env.NODE_ENV === 'development' ? (error?.message || 'Internal error') : 'An unexpected error occurred';
-      res.status(500).json({ success: false, message: msg });
+const register = catchAsync(async (req: Request, res: Response) => {
+  try {
+    const { email, password, full_name } = req.body ?? {};
+    if (!email || !password || !full_name) {
+      ResponseHandler.error(res, 'email, password and full_name are required', 400);
       return;
     }
+
+    const result = await AuthService.register(req.body);
+    ResponseHandler.created(res, 'User registered successfully', result);
+    return;
+  } catch (error: any) {
+    logger.error('AuthController.register error', { message: error?.message, stack: error?.stack });
+
+    if (error instanceof ConflictError) {
+      ResponseHandler.error(res, error.message, 409);
+      return;
+    }
+    if (error instanceof ValidationError) {
+      ResponseHandler.error(res, error.message, 400);
+      return;
+    }
+    if (error instanceof UnauthorizedError) {
+      ResponseHandler.error(res, error.message, 401);
+      return;
+    }
+    if (error instanceof NotFoundError) {
+      ResponseHandler.error(res, error.message, 404);
+      return;
+    }
+
+    const msg =
+      process.env.NODE_ENV === 'development' ? (error?.message || 'Internal error') : 'An unexpected error occurred';
+    ResponseHandler.error(res, msg, 500);
+    return;
+  }
+});
+
+const login = catchAsync(async (req: Request, res: Response) => {
+  const result = await AuthService.login(req.body);
+  ResponseHandler.success(res, 'Login successful', result);
+  return;
+});
+
+const refreshToken = catchAsync(async (req: Request, res: Response) => {
+  const { refreshToken } = req.body ?? {};
+  const result = await AuthService.refreshAccessToken(refreshToken);
+  ResponseHandler.success(res, 'Token refreshed successfully', result);
+  return;
+});
+
+const logout = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const result = await AuthService.login(req.body);
-      ResponseHandler.success(res, 'Login successful', result);
-    } catch (error) {
-      next(error);
-    }
+  const { refreshToken } = req.body ?? {};
+  await AuthService.logout(authReq.user.id, refreshToken);
+  ResponseHandler.success(res, 'Logged out successfully');
+  return;
+});
+
+const changePassword = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async refreshToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { refreshToken } = req.body;
-      const result = await AuthService.refreshAccessToken(refreshToken);
-      ResponseHandler.success(res, 'Token refreshed successfully', result);
-    } catch (error) {
-      next(error);
-    }
+  const { oldPassword, newPassword } = req.body ?? {};
+  await AuthService.changePassword(authReq.user.id, oldPassword, newPassword);
+  ResponseHandler.success(res, 'Password changed successfully');
+  return;
+});
+
+const getProfile = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user || !authReq.user.id) {
+    ResponseHandler.error(res, 'Unauthorized', 401);
+    return;
   }
 
-  static async logout(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      const { refreshToken } = req.body;
-      await AuthService.logout(req.user!.id, refreshToken);
-      ResponseHandler.success(res, 'Logged out successfully');
-    } catch (error) {
-      next(error);
-    }
-  }
+  ResponseHandler.success(res, 'Profile retrieved successfully', { user: authReq.user });
+  return;
+});
 
-  static async changePassword(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const { oldPassword, newPassword } = req.body;
-      await AuthService.changePassword(req.user!.id, oldPassword, newPassword);
-      ResponseHandler.success(res, 'Password changed successfully');
-    } catch (error) {
-      next(error);
-    }
-  }
+export const AuthController = {
+  register,
+  login,
+  refreshToken,
+  logout,
+  changePassword,
+  getProfile,
+};
 
-  static async getProfile(
-    req: AuthenticatedRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      ResponseHandler.success(res, 'Profile retrieved successfully', { user: req.user });
-    } catch (error) {
-      next(error);
-    }
-  }
-}
