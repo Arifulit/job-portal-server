@@ -1,48 +1,117 @@
-// ...existing code...
-import mongoose from "mongoose";
-import { env } from "./env";
-import { logger } from "@/app/utils/logger";
+// import { MongoClient, Db } from 'mongodb';
+// import { logger } from '@/app/utils/logger';
 
-let connected = false;
+// let client: MongoClient | null = null;
+// let dbInstance: Db | null = null;
 
-/**
- * Initialize MongoDB connection using MONGODB_URI from env.
- * Returns mongoose.Connection and is safe to call multiple times.
- */
-export const initializeDatabase = async (): Promise<mongoose.Connection> => {
-  if (connected && mongoose.connection.readyState === 1) {
-    return mongoose.connection;
-  }
+// export const initializeDatabase = async (): Promise<Db> => {
+//   if (dbInstance) return dbInstance;
 
-  const uri = env.MONGODB_URI || process.env.MONGODB_URI;
-  if (!uri) {
-    const err = new Error("MONGODB_URI is not defined in environment");
-    logger.error("❌ MongoDB URI missing");
-    throw err;
-  }
+//   const uri = process.env.MONGODB_URI;
+//   if (!uri) throw new Error('MONGODB_URI not set');
 
-  try {
-    // mongoose v6+ default options are fine
-    await mongoose.connect(uri);
-    connected = true;
-    logger.info("✅ MongoDB connected successfully");
-    return mongoose.connection;
-  } catch (error) {
-    logger.error("❌ Failed to connect to MongoDB:", error);
-    throw error;
-  }
+//   const opts: any = {
+//     serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 30000),
+//     connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS ?? 30000),
+//   };
+
+//   const maxAttempts = Number(process.env.MONGODB_CONNECTION_RETRIES ?? 3);
+//   const retryDelayMs = Number(process.env.MONGODB_RETRY_DELAY_MS ?? 2000);
+
+//   let lastErr: any = null;
+//   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+//     try {
+//       client = new MongoClient(uri, opts);
+//       await client.connect();
+
+//       const dbName =
+//         process.env.MONGODB_DB ||
+//         (() => {
+//           try {
+//             const u = new URL(uri);
+//             return (u.pathname || '').replace(/^\/+/, '') || 'job-portal-api';
+//           } catch {
+//             return 'job-portal-api';
+//           }
+//         })();
+
+//       dbInstance = client.db(dbName);
+
+//       // verify connection
+//       await dbInstance.admin().ping();
+
+//       logger.info('MongoDB connected', { db: dbName, attempt });
+//       return dbInstance;
+//     } catch (err: any) {
+//       lastErr = err;
+//       logger.error(`MongoDB connect attempt ${attempt} failed`, { message: err?.message || err });
+//       try { if (client) await client.close(); } catch {}
+//       client = null;
+//       dbInstance = null;
+//       if (attempt < maxAttempts) await new Promise((r) => setTimeout(r, retryDelayMs));
+//     }
+//   }
+
+//   const hint =
+//     'Check MONGODB_URI, network access (Atlas IP whitelist), and proxy env (HTTP_PROXY/HTTPS_PROXY).';
+//   throw new Error(`Failed to connect to MongoDB after ${maxAttempts} attempts. ${hint}\nLast error: ${lastErr?.message || lastErr}`);
+// };
+
+// export const getDatabase = (): Db => {
+//   if (!dbInstance) throw new Error('Database not connected. Call initializeDatabase() first.');
+//   return dbInstance;
+// };
+
+// export const closeDatabase = async (): Promise<void> => {
+//   if (client) await client.close();
+//   client = null;
+//   dbInstance = null;
+// };
+import { MongoClient, Db } from 'mongodb';
+import { logger } from '@/app/utils/logger';
+
+let client: MongoClient | null = null;
+let dbInstance: Db | null = null;
+
+export const initializeDatabase = async (): Promise<Db> => {
+  if (dbInstance) return dbInstance;
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI not set');
+
+  const opts: any = {
+    serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 30000),
+    connectTimeoutMS: Number(process.env.MONGODB_CONNECT_TIMEOUT_MS ?? 30000),
+  };
+
+  client = new MongoClient(uri, opts);
+  await client.connect(); // throws on failure
+  const dbName =
+    process.env.MONGODB_DB ||
+    (() => {
+      try {
+        const u = new URL(uri);
+        return (u.pathname || '').replace(/^\/+/, '') || 'job-portal-api';
+      } catch {
+        return 'job-portal-api';
+      }
+    })();
+
+  dbInstance = client.db(dbName);
+  // verify connection
+  await dbInstance.admin().ping();
+
+  logger.info('MongoDB connected', { db: dbName });
+  return dbInstance;
 };
 
-/**
- * Get the active mongoose connection.
- * Throws if not connected yet.
- */
-export const getDatabase = (): mongoose.Connection => {
-  if (mongoose.connection.readyState !== 1) {
-    throw new Error("MongoDB is not connected. Call initializeDatabase() first.");
-  }
-  return mongoose.connection;
+export const getDatabase = (): Db => {
+  if (!dbInstance) throw new Error('Database not connected. Call initializeDatabase() first.');
+  return dbInstance;
 };
 
-export default mongoose;
-// ...existing code...
+export const closeDatabase = async (): Promise<void> => {
+  if (client) await client.close();
+  client = null;
+  dbInstance = null;
+};

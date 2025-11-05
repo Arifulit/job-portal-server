@@ -1,110 +1,74 @@
+
 import { Request, Response, NextFunction } from 'express';
-import { StatusCodes } from 'http-status-codes';
 import { JobService } from './job.service';
+import { ResponseHandler } from '@/app/utils/response';
 import { AuthenticatedRequest } from '@/app/types';
-import { logger } from '@/app/utils/logger';
 import { catchAsync } from '@/app/utils/catchAsync';
-import { sendResponse } from '@/app/utils/sendResponse';
 
+const createJob = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    ResponseHandler.error(res, 'Authentication required', 401);
+    return;
+  }
+  const job = await JobService.createJob(authReq.user.id, req.body);
+  ResponseHandler.created(res, 'Job created successfully', job);
+});
 
-  const createJob = catchAsync(async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-    if (!authReq.user) {
-      return sendResponse(res, {
-        success: false, statusCode: StatusCodes.UNAUTHORIZED, message: 'Authentication required',
-        data: undefined
-      });
-    }
-    const job = await JobService.createJob(authReq.user.id, req.body);
-    return sendResponse(res, {
-      success: true,
-      statusCode: StatusCodes.CREATED,
-      message: 'Job created successfully',
-      data: job,
-    });
-  });
+const getAllJobs = catchAsync(async (req: Request, res: Response) => {
+  const filters = req.query as any;
+  const jobs = await JobService.getAllJobs(filters);
+  ResponseHandler.success(res, 'Jobs retrieved successfully', { jobs, count: Array.isArray(jobs) ? jobs.length : 0 });
+});
 
-  const getAllJobs = catchAsync(async (req: Request, res: Response) => {
-    const jobs = await JobService.getAllJobs(req.query);
-    return sendResponse(res, {
-      success: true,
-      statusCode: StatusCodes.OK,
-      message: 'Jobs retrieved successfully',
-      data: jobs,
-      meta: { count: Array.isArray(jobs) ? jobs.length : 0 },
-    });
-  });
+const getJobById = catchAsync(async (req: Request, res: Response) => {
+  const job = await JobService.getJobById(req.params.id);
+  if (!job) {
+    ResponseHandler.error(res, 'Job not found', 404);
+    return;
+  }
+  ResponseHandler.success(res, 'Job retrieved successfully', job);
+});
 
+const getMyJobs = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    ResponseHandler.error(res, 'Authentication required', 401);
+    return;
+  }
+  const jobs = await JobService.getEmployerJobs(authReq.user.id);
+  ResponseHandler.success(res, 'Jobs retrieved successfully', { jobs, count: Array.isArray(jobs) ? jobs.length : 0 });
+});
 
-  const getJobById = catchAsync(async (req: Request, res: Response) => {
-    const job = await JobService.getJobById(req.params.id);
-    return sendResponse(res, {
-      success: true,
-      statusCode: StatusCodes.OK,
-      message: 'Job retrieved successfully',
-      data: job,
-    });
-  });
+const updateJob = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    ResponseHandler.error(res, 'Authentication required', 401);
+    return;
+  }
+  const updated = await JobService.updateJob(req.params.id, authReq.user.id, authReq.user.role, req.body);
+  if (!updated) {
+    ResponseHandler.error(res, 'Job not found or not permitted', 404);
+    return;
+  }
+  ResponseHandler.success(res, 'Job updated successfully', updated);
+});
 
-  const getMyJobs = catchAsync(async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-    if (!authReq.user) {
-      return sendResponse(res, {
-        success: false, statusCode: StatusCodes.UNAUTHORIZED, message: 'Authentication required',
-        data: undefined
-      });
-    }
-    const jobs = await JobService.getEmployerJobs(authReq.user.id);
-    return sendResponse(res, {
-      success: true,
-      statusCode: StatusCodes.OK,
-      message: 'Jobs retrieved successfully',
-      data: jobs,
-      meta: { count: Array.isArray(jobs) ? jobs.length : 0 },
-    });
-  });
-  
-  const updateJob = catchAsync(async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-    if (!authReq.user) {
-      return sendResponse(res, {
-        success: false, statusCode: StatusCodes.UNAUTHORIZED, message: 'Authentication required',
-        data: undefined
-      });
-    }
-    const updatedJob = await JobService.updateJob(req.params.id, authReq.user.id, authReq.user.role, req.body);
-    return sendResponse(res, {
-      success: true,
-      statusCode: StatusCodes.OK,
-      message: 'Job updated successfully',
-      data: updatedJob,
-    });
-  });
+const deleteJob = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user?.id) {
+    ResponseHandler.error(res, 'Authentication required', 401);
+    return;
+  }
+  const result = await JobService.deleteJob(req.params.id, authReq.user.id, authReq.user.role);
+  ResponseHandler.success(res, 'Job deleted successfully', result);
+});
 
-  
-  const  deleteJob = catchAsync(async (req: Request, res: Response) => {
-    const authReq = req as AuthenticatedRequest;
-    if (!authReq.user) {
-      return sendResponse(res, {
-        success: false, statusCode: StatusCodes.UNAUTHORIZED, message: 'Authentication required',
-        data: undefined
-      });
-    }
-    const result = await JobService.deleteJob(req.params.id, authReq.user.id, authReq.user.role);
-    return sendResponse(res, {
-      success: true,
-      statusCode: StatusCodes.OK,
-      message: 'Job deleted successfully',
-      data: result,
-    });
-  });
-     
-
-  export const JobController = {
-    createJob,
-    getAllJobs,
-    getJobById,
-    getMyJobs,
-    updateJob,
-    deleteJob
-}
+export const JobController = {
+  createJob,
+  getAllJobs,
+  getJobById,
+  getMyJobs,
+  updateJob,
+  deleteJob,
+};

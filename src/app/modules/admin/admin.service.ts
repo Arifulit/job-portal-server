@@ -1,197 +1,208 @@
+// ...existing code...
 import { getDatabase } from '@/app/config/database';
 import { ValidationError } from '@/app/utils/errors';
 import { logger } from '@/app/utils/logger';
 
-// ...existing code...
-
 const getAllUsers = async (filters?: any) => {
   const db = getDatabase() as any;
-  let query: any;
 
-  // Handle MongoDB connection (Connection with .collection)
-  if (typeof (db as any).collection === 'function') {
-    const mongoQ: any = {};
-    if (filters?.role) mongoQ.role = filters.role;
-    if (filters?.is_active !== undefined) mongoQ.is_active = filters.is_active;
+  // MongoDB client
+  if (typeof db?.collection === 'function') {
+    try {
+      const mongoQ: any = {};
+      if (filters?.role) mongoQ.role = filters.role;
+      if (filters?.is_active !== undefined) mongoQ.is_active = filters.is_active;
 
-    const users = await (db as any)
-      .collection('users')
-      .find(mongoQ)
-      .project({ password_hash: 0, password: 0 })
-      .sort({ created_at: -1 })
-      .toArray();
+      const users = await db
+        .collection('users')
+        .find(mongoQ)
+        .project({ password_hash: 0, password: 0 })
+        .sort({ created_at: -1 })
+        .toArray();
 
-    return users || [];
-  }
-
-  // Supabase-style client (has .from)
-  if (typeof (db as any).from === 'function') {
-    query = (db as any)
-      .from('users')
-      .select('id, email, full_name, role, phone, company_name, is_active, is_verified, created_at');
-  } else {
-    // Knex-style client (db is a function) or generic SQL client
-    if (typeof db === 'function' || typeof (db as any).select === 'function') {
-      // knex instance: db('users').select(...)
-      try {
-        query = (typeof db === 'function' ? (db as any)('users') : (db as any).from('users')).select(
-          'id',
-          'email',
-          'full_name',
-          'role',
-          'phone',
-          'company_name',
-          'is_active',
-          'is_verified',
-          'created_at'
-        );
-      } catch {
-        // fallback to generic from/select shape
-        query = (db as any).from ? (db as any).from('users').select('id, email, full_name, role, phone, company_name, is_active, is_verified, created_at') : { order: async () => ({ data: [], error: null }) };
-      }
-    } else {
-      // Unknown client: attempt supabase-style as last resort
-      query = (db as any).from ? (db as any).from('users').select('id, email, full_name, role, phone, company_name, is_active, is_verified, created_at') : { order: async () => ({ data: [], error: null }) };
+      return users || [];
+    } catch (err: any) {
+      logger.error('Failed to fetch users (mongo):', err);
+      throw new ValidationError('Failed to retrieve users');
     }
   }
 
-  if (filters?.role) {
-    query = query.eq('role', filters.role);
+  // Knex / SQL function client (db is function) or query-builder-like
+  if (typeof db === 'function' || typeof db?.select === 'function') {
+    try {
+      const qb = typeof db === 'function' ? db('users') : db.from('users');
+      let query: any = qb.select(
+        'id',
+        'email',
+        'full_name',
+        'role',
+        'phone',
+        'company_name',
+        'is_active',
+        'is_verified',
+        'created_at'
+      );
+
+      if (filters?.role) query = query.where('role', filters.role);
+      if (filters?.is_active !== undefined) query = query.where('is_active', filters.is_active);
+
+      const rows = await (query.orderBy ? query.orderBy('created_at', 'desc') : query);
+      return rows || [];
+    } catch (err: any) {
+      logger.error('Failed to fetch users (sql):', err);
+      throw new ValidationError('Failed to retrieve users');
+    }
   }
 
-  if (filters?.is_active !== undefined) {
-    query = query.eq('is_active', filters.is_active);
-  }
-
-  const { data: users, error } = await query.order('created_at', { ascending: false });
-
-  if (error) {
-    logger.error('Failed to fetch users:', error);
-    throw new ValidationError('Failed to retrieve users');
-  }
-
-  return users || [];
+  // Unknown client
+  throw new ValidationError('Unsupported database client for getAllUsers');
 };
 
 const updateUserStatus = async (userId: string, isActive: boolean) => {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
-  const { data: updatedUser, error } = await db
-    .from('users')
-    .update({ is_active: isActive, updated_at: new Date().toISOString() })
-    .eq('id', userId)
-    .select('id, email, full_name, role, is_active')
-    .single();
-
-  if (error) {
-    logger.error('Failed to update user status:', error);
-    throw new ValidationError('Failed to update user status');
+  // MongoDB
+  if (typeof db?.collection === 'function') {
+    try {
+      const res = await db
+        .collection('users')
+        .findOneAndUpdate({ id: userId }, { $set: { is_active: isActive, updated_at: new Date().toISOString() } }, { returnDocument: 'after' });
+      return res.value || null;
+    } catch (err: any) {
+      logger.error('Failed to update user status (mongo):', err);
+      throw new ValidationError('Failed to update user status');
+    }
   }
 
-  return updatedUser;
+  // Knex / SQL
+  if (typeof db === 'function' || typeof db?.update === 'function') {
+    try {
+      const table = typeof db === 'function' ? db('users') : db.from('users');
+      const updated = await table.where({ id: userId }).update({ is_active: isActive, updated_at: new Date().toISOString() }).returning(['id', 'email', 'full_name', 'role', 'is_active']);
+      return Array.isArray(updated) ? updated[0] : updated;
+    } catch (err: any) {
+      logger.error('Failed to update user status (sql):', err);
+      throw new ValidationError('Failed to update user status');
+    }
+  }
+
+  throw new ValidationError('Unsupported database client for updateUserStatus');
 };
 
 const deleteUser = async (userId: string) => {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
-  const { error } = await db.from('users').delete().eq('id', userId);
-
-  if (error) {
-    logger.error('Failed to delete user:', error);
-    throw new ValidationError('Failed to delete user');
+  // MongoDB
+  if (typeof db?.collection === 'function') {
+    try {
+      const res = await db.collection('users').deleteOne({ id: userId });
+      if (res.deletedCount === 0) throw new Error('Not found');
+      return { message: 'User deleted successfully' };
+    } catch (err: any) {
+      logger.error('Failed to delete user (mongo):', err);
+      throw new ValidationError('Failed to delete user');
+    }
   }
 
-  return { message: 'User deleted successfully' };
+  // Knex / SQL
+  if (typeof db === 'function' || typeof db?.del === 'function') {
+    try {
+      const table = typeof db === 'function' ? db('users') : db.from('users');
+      await table.where({ id: userId }).del();
+      return { message: 'User deleted successfully' };
+    } catch (err: any) {
+      logger.error('Failed to delete user (sql):', err);
+      throw new ValidationError('Failed to delete user');
+    }
+  }
+
+  throw new ValidationError('Unsupported database client for deleteUser');
 };
 
 const getDashboardStats = async () => {
   const db = getDatabase() as any;
 
-  // Normalize results to { data: any[], count?: number, error?: any }
-  const normalize = (res: any) => {
-    if (!res) return { data: [], count: 0, error: null };
-    if (Array.isArray(res)) return { data: res, count: res.length, error: null };
-    if (res.data) return { data: res.data || [], count: res.count, error: res.error || null };
-    return { data: [], count: 0, error: null };
-  };
+  const tally = (arr: any[], key: string) =>
+    (arr || []).reduce((acc: any, item: any) => {
+      const k = item?.[key] ?? 'unknown';
+      acc[k] = (acc[k] || 0) + 1;
+      return acc;
+    }, {});
 
-  let usersResult: any;
-  let jobsResult: any;
-  let applicationsResult: any;
+  // MongoDB
+  if (typeof db?.collection === 'function') {
+    try {
+      const [users, jobs, applications] = await Promise.all([
+        db.collection('users').find({}).project({ role: 1 }).toArray(),
+        db.collection('jobs').find({}).project({ status: 1 }).toArray(),
+        db.collection('applications').find({}).project({ status: 1 }).toArray(),
+      ]);
 
-  // MongoDB client
-  if (typeof db.collection === 'function') {
-    const [users, jobs, applications] = await Promise.all([
-      db.collection('users').find({}).project({ role: 1 }).toArray(),
-      db.collection('jobs').find({}).project({ status: 1 }).toArray(),
-      db.collection('applications').find({}).project({ status: 1 }).toArray(),
-    ]);
-
-    usersResult = { data: users || [], count: users?.length || 0, error: null };
-    jobsResult = { data: jobs || [], count: jobs?.length || 0, error: null };
-    applicationsResult = { data: applications || [], count: applications?.length || 0, error: null };
+      return {
+        users: { total: users?.length || 0, byRole: tally(users, 'role') },
+        jobs: { total: jobs?.length || 0, byStatus: tally(jobs, 'status') },
+        applications: { total: applications?.length || 0, byStatus: tally(applications, 'status') },
+      };
+    } catch (err: any) {
+      logger.error('Failed to fetch dashboard stats (mongo):', err);
+      throw new ValidationError('Failed to retrieve dashboard stats');
+    }
   }
 
+  // Knex / SQL
+  if (typeof db === 'function' || typeof db?.select === 'function') {
+    try {
+      const [usersRows, jobsRows, appsRows] = await Promise.all([
+        (typeof db === 'function' ? db('users') : db.from('users')).select('role'),
+        (typeof db === 'function' ? db('jobs') : db.from('jobs')).select('status'),
+        (typeof db === 'function' ? db('applications') : db.from('applications')).select('status'),
+      ]);
 
-  const usersByRole = (usersResult.data || []).reduce((acc: any, user: any) => {
-    const role = user.role ?? 'unknown';
-    acc[role] = (acc[role] || 0) + 1;
-    return acc;
-  }, {});
+      return {
+        users: { total: (usersRows || []).length, byRole: tally(usersRows || [], 'role') },
+        jobs: { total: (jobsRows || []).length, byStatus: tally(jobsRows || [], 'status') },
+        applications: { total: (appsRows || []).length, byStatus: tally(appsRows || [], 'status') },
+      };
+    } catch (err: any) {
+      logger.error('Failed to fetch dashboard stats (sql):', err);
+      throw new ValidationError('Failed to retrieve dashboard stats');
+    }
+  }
 
-  const jobsByStatus = (jobsResult.data || []).reduce((acc: any, job: any) => {
-    const status = job.status ?? 'unknown';
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const applicationsByStatus = (applicationsResult.data || []).reduce((acc: any, app: any) => {
-    const status = app.status ?? 'unknown';
-    acc[status] = (acc[status] || 0) + 1;
-    return acc;
-  }, {});
-
-  return {
-    users: {
-      total: usersResult.count ?? (usersResult.data || []).length ?? 0,
-      byRole: usersByRole || {},
-    },
-    jobs: {
-      total: jobsResult.count ?? (jobsResult.data || []).length ?? 0,
-      byStatus: jobsByStatus || {},
-    },
-    applications: {
-      total: applicationsResult.count ?? (applicationsResult.data || []).length ?? 0,
-      byStatus: applicationsByStatus || {},
-    },
-  };
+  throw new ValidationError('Unsupported database client for getDashboardStats');
 };
 
 const getAllJobs = async () => {
   const db = getDatabase() as any;
 
-  // MongoDB client
-  if (typeof db.collection === 'function') {
-    const jobs = await db
-      .collection('jobs')
-      .aggregate([
-        { $sort: { created_at: -1 } },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'employer_id',
-            foreignField: 'id',
-            as: 'employer',
+  // MongoDB
+  if (typeof db?.collection === 'function') {
+    try {
+      const jobs = await db
+        .collection('jobs')
+        .aggregate([
+          { $sort: { created_at: -1 } },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'employer_id',
+              foreignField: 'id',
+              as: 'employer',
+            },
           },
-        },
-        { $unwind: { path: '$employer', preserveNullAndEmptyArrays: true } },
-        { $project: { 'employer.password_hash': 0, 'employer.password': 0 } },
-    }
+          { $unwind: { path: '$employer', preserveNullAndEmptyArrays: true } },
+          { $project: { 'employer.password_hash': 0, 'employer.password': 0 } },
+        ])
+        .toArray();
 
-    return jobs || [];
+      return jobs || [];
+    } catch (err: any) {
+      logger.error('Failed to fetch jobs (mongo):', err);
+      throw new ValidationError('Failed to retrieve jobs');
+    }
   }
 
-  // Knex-style or generic SQL client
+  // Knex / SQL
   try {
     const rows = await (typeof db === 'function' ? db('jobs') : db.from('jobs'))
       .leftJoin('users as employer', 'jobs.employer_id', 'employer.id')
@@ -205,13 +216,7 @@ const getAllJobs = async () => {
       .orderBy('jobs.created_at', 'desc');
 
     const mapped = (rows || []).map((r: any) => {
-      const {
-        employer_id,
-        employer_full_name,
-        employer_email,
-        employer_company_name,
-        ...job
-      } = r;
+      const { employer_id, employer_full_name, employer_email, employer_company_name, ...job } = r;
       job.employer = employer_id
         ? {
             id: employer_id,
@@ -224,30 +229,84 @@ const getAllJobs = async () => {
     });
 
     return mapped;
-  } catch (err) {
-    logger.error('Failed to fetch jobs:', err);
+  } catch (err: any) {
+    logger.error('Failed to fetch jobs (sql):', err);
     throw new ValidationError('Failed to retrieve jobs');
   }
 };
 
 const getAllApplications = async () => {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
-  const { data: applications, error } = await db
-    .from('applications')
-    .select(`
-      *,
-      job:jobs(id, title),
-      applicant:users!applications_applicant_id_fkey(id, full_name, email)
-    `)
-    .order('applied_at', { ascending: false });
+  // MongoDB
+  if (typeof db?.collection === 'function') {
+    try {
+      const apps = await db
+        .collection('applications')
+        .aggregate([
+          { $sort: { applied_at: -1 } },
+          {
+            $lookup: {
+              from: 'jobs',
+              localField: 'job_id',
+              foreignField: 'id',
+              as: 'job_docs',
+            },
+          },
+          { $unwind: { path: '$job_docs', preserveNullAndEmptyArrays: true } },
+          {
+            $lookup: {
+              from: 'users',
+              localField: 'applicant_id',
+              foreignField: 'id',
+              as: 'applicant_docs',
+            },
+          },
+          { $unwind: { path: '$applicant_docs', preserveNullAndEmptyArrays: true } },
+          {
+            $addFields: {
+              job: { id: '$job_docs.id', title: '$job_docs.title' },
+              applicant: { id: '$applicant_docs.id', full_name: '$applicant_docs.full_name', email: '$applicant_docs.email' },
+            },
+          },
+          { $project: { job_docs: 0, applicant_docs: 0 } },
+        ])
+        .toArray();
 
-  if (error) {
-    logger.error('Failed to fetch applications:', error);
-    throw new ValidationError('Failed to retrieve applications');
+      return apps || [];
+    } catch (err: any) {
+      logger.error('Failed to fetch applications (mongo):', err);
+      throw new ValidationError('Failed to retrieve applications');
+    }
   }
 
-  return applications || [];
+  // Knex / SQL
+  try {
+    const rows = await (typeof db === 'function' ? db('applications') : db.from('applications'))
+      .leftJoin('jobs', 'applications.job_id', 'jobs.id')
+      .leftJoin('users as applicants', 'applications.applicant_id', 'applicants.id')
+      .select(
+        'applications.*',
+        'jobs.id as job_id',
+        'jobs.title as job_title',
+        'applicants.id as applicant_id',
+        'applicants.full_name as applicant_full_name',
+        'applicants.email as applicant_email'
+      )
+      .orderBy('applications.applied_at', 'desc');
+
+    const mapped = (rows || []).map((r: any) => {
+      const { job_id, job_title, applicant_id, applicant_full_name, applicant_email, ...app } = r;
+      app.job = job_id ? { id: job_id, title: job_title } : null;
+      app.applicant = applicant_id ? { id: applicant_id, full_name: applicant_full_name, email: applicant_email } : null;
+      return app;
+    });
+
+    return mapped;
+  } catch (err: any) {
+    logger.error('Failed to fetch applications (sql):', err);
+    throw new ValidationError('Failed to retrieve applications');
+  }
 };
 
 export const AdminService = {
@@ -258,3 +317,4 @@ export const AdminService = {
   getAllJobs,
   getAllApplications,
 };
+// ...existing code...

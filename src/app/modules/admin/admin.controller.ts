@@ -2,14 +2,26 @@ import { Request, Response } from 'express';
 import { AdminService } from './admin.service';
 import { ResponseHandler } from '@/app/utils/response';
 import { catchAsync } from '@/app/utils/catchAsync';
+import { ValidationError } from '@/app/utils/errors';
+import { logger } from '@/app/utils/logger';
+import { getDatabase } from '@/app/config/database';
 
-const getAllUsers = catchAsync(async (req: Request, res: Response) => {
-  const users = await AdminService.getAllUsers(req.query);
-  ResponseHandler.success(res, 'Users retrieved successfully', {
-    users,
-    count: Array.isArray(users) ? users.length : 0,
-  });
-});
+// const getAllUsers = catchAsync(async (req: Request, res: Response) => {
+//   const users = await AdminService.getAllUsers(req.query);
+//   ResponseHandler.success(res, 'Users retrieved successfully', {
+//     users,
+//     count: Array.isArray(users) ? users.length : 0,
+//   });
+// });
+const getAllUsers = async (filters?: any) => {
+  const db = getDatabase() as any; // moved inside function
+  try {
+    return await db.collection('users').find(filters || {}).toArray();
+  } catch (err: any) {
+    logger.error('getAllUsers failed', err);
+    throw new ValidationError('Failed to fetch users');
+  }
+};
 
 const updateUserStatus = catchAsync(async (req: Request, res: Response) => {
   const { isActive } = req.body;

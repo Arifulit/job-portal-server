@@ -4,7 +4,6 @@ import userRoutes from '@/app/modules/user/user.routes';
 import jobRoutes from '@/app/modules/job/job.routes';
 import applicationRoutes from '@/app/modules/application/application.routes';
 import adminRoutes from '@/app/modules/admin/admin.routes';
-
 const router = Router();
 
 router.use('/auth', authRoutes);
