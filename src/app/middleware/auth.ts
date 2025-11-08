@@ -1,7 +1,6 @@
-// ...existing code...
+
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { JWTService } from '@/app/utils/jwt';
-// import UserModel from '@/app/models/user.model';
 import { UnauthorizedError } from '@/app/utils/errors';
 import { UserRole } from '@/app/types';
 import UserModel from '../modules/user/user.model';
@@ -51,4 +50,3 @@ export function authorize(...allowedRoles: (UserRole | string)[]): RequestHandle
     return next();
   };
 }
-// ...existing code...

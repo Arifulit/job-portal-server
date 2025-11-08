@@ -85,7 +85,7 @@ export interface Application {
   updated_at: string;
 }
 
-export interface AuthenticatedRequest extends Request {
+export interface AuthenticatedRequest extends Omit<Request, 'user'> {
   user?: {
     id: string;
     email: string;

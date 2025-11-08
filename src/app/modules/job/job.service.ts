@@ -1,191 +1,84 @@
-import { getDatabase } from '@/app/config/database';
+
 import { JobStatus, UserRole } from '@/app/types';
 import { NotFoundError, ForbiddenError, ValidationError } from '@/app/utils/errors';
 import { logger } from '@/app/utils/logger';
+import { IJob, Job } from './job.model';
 
-type AnyDB = any;
-
-const createJob = async (employerId: string, jobData: any): Promise<any> => {
-  const db = getDatabase() as AnyDB;
-
-  try {
-    const { data: newJob, error } = await db
-      .from('jobs')
-      .insert({
-        employer_id: employerId,
+export const JobService = {
+  async createJob(employerId: string, jobData: Partial<IJob>) {
+    try {
+      const newJob = await Job.create({
         ...jobData,
+        employer_id: employerId,
         status: JobStatus.ACTIVE,
         views_count: 0,
         applications_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      logger.error('JobService.createJob: insert error', error);
-      throw new ValidationError('Failed to create job posting');
+      });
+      return newJob;
+    } catch (err: any) {
+      logger.error('JobService.createJob error:', err);
+      throw new ValidationError(err.message || 'Failed to create job');
     }
+  },
 
-    return newJob;
-  } catch (err: any) {
-    logger.error('JobService.createJob unexpected error', err);
-    throw new ValidationError(err?.message || 'Failed to create job posting');
-  }
-};
+  async getAllJobs(filters?: any) {
+    try {
+      const query: any = { status: JobStatus.ACTIVE };
 
-const getAllJobs = async (filters?: any): Promise<any[]> => {
-  const db = getDatabase() as AnyDB;
+      if (filters?.job_type) query.job_type = filters.job_type;
+      if (filters?.location) query.location = { $regex: filters.location, $options: 'i' };
+      if (filters?.search)
+        query.$or = [
+          { title: { $regex: filters.search, $options: 'i' } },
+          { description: { $regex: filters.search, $options: 'i' } },
+        ];
 
-  try {
-    let query: any = db.from('jobs').select('*').eq('status', JobStatus.ACTIVE);
-
-    if (filters?.job_type) {
-      query = query.eq('job_type', filters.job_type);
+      const jobs = await Job.find(query).sort({ created_at: -1 });
+      return jobs;
+    } catch (err: any) {
+      logger.error('JobService.getAllJobs error:', err);
+      throw new ValidationError(err.message || 'Failed to retrieve jobs');
     }
+  },
 
-    if (filters?.location) {
-      query = query.ilike('location', `%${filters.location}%`);
-    }
-
-    if (filters?.search) {
-      query = query.or(`title.ilike.%${filters.search}%,description.ilike.%${filters.search}%`);
-    }
-
-    const { data: jobs, error } = await query.order('created_at', { ascending: false });
-
-    if (error) {
-      logger.error('JobService.getAllJobs: query error', error);
-      throw new ValidationError('Failed to retrieve jobs');
-    }
-
-    return jobs || [];
-  } catch (err: any) {
-    logger.error('JobService.getAllJobs unexpected error', err);
-    throw new ValidationError(err?.message || 'Failed to retrieve jobs');
-  }
-};
-
-const getJobById = async (jobId: string): Promise<any> => {
-  const db = getDatabase() as AnyDB;
-
-  try {
-    const { data: job, error } = await db.from('jobs').select('*').eq('id', jobId).maybeSingle();
-
-    if (error || !job) {
-      throw new NotFoundError('Job not found');
-    }
+  async getJobById(jobId: string) {
+    const job = await Job.findById(jobId);
+    if (!job) throw new NotFoundError('Job not found');
 
     try {
-      await db
-        .from('jobs')
-        .update({ views_count: (job.views_count || 0) + 1, updated_at: new Date().toISOString() })
-        .eq('id', jobId);
-    } catch (e) {
-      logger.warn('JobService.getJobById: failed to increment views_count', e);
+      job.views_count += 1;
+      await job.save();
+    } catch (err) {
+      logger.warn('JobService.getJobById increment views_count failed', err);
     }
 
     return job;
-  } catch (err: any) {
-    logger.error('JobService.getJobById error', err);
-    if (err instanceof NotFoundError) throw err;
-    throw new ValidationError(err?.message || 'Failed to retrieve job');
-  }
-};
+  },
 
-const getEmployerJobs = async (employerId: string): Promise<any[]> => {
-  const db = getDatabase() as AnyDB;
+  async getEmployerJobs(employerId: string) {
+    return await Job.find({ employer_id: employerId }).sort({ created_at: -1 });
+  },
 
-  try {
-    const { data: jobs, error } = await db
-      .from('jobs')
-      .select('*')
-      .eq('employer_id', employerId)
-      .order('created_at', { ascending: false });
+  async updateJob(jobId: string, employerId: string, userRole: UserRole, updates: Partial<IJob>) {
+    const job = await Job.findById(jobId);
+    if (!job) throw new NotFoundError('Job not found');
 
-    if (error) {
-      logger.error('JobService.getEmployerJobs: query error', error);
-      throw new ValidationError('Failed to retrieve jobs');
-    }
+    if (userRole !== UserRole.ADMIN && job.employer_id !== employerId)
+      throw new ForbiddenError('Not permitted to update this job');
 
-    return jobs || [];
-  } catch (err: any) {
-    logger.error('JobService.getEmployerJobs unexpected error', err);
-    throw new ValidationError(err?.message || 'Failed to retrieve jobs');
-  }
-};
+    Object.assign(job, updates, { updated_at: new Date() });
+    await job.save();
+    return job;
+  },
 
-const updateJob = async (jobId: string, employerId: string, userRole: UserRole, updates: any): Promise<any> => {
-  const db = getDatabase() as AnyDB;
+  async deleteJob(jobId: string, employerId: string, userRole: UserRole) {
+    const job = await Job.findById(jobId);
+    if (!job) throw new NotFoundError('Job not found');
 
-  try {
-    const { data: existingJob } = await db.from('jobs').select('employer_id').eq('id', jobId).maybeSingle();
+    if (userRole !== UserRole.ADMIN && job.employer_id !== employerId)
+      throw new ForbiddenError('Not permitted to delete this job');
 
-    if (!existingJob) {
-      throw new NotFoundError('Job not found');
-    }
-
-    if (userRole !== UserRole.ADMIN && existingJob.employer_id !== employerId) {
-      throw new ForbiddenError('You do not have permission to update this job');
-    }
-
-    updates.updated_at = new Date().toISOString();
-
-    const { data: updatedJob, error } = await db
-      .from('jobs')
-      .update(updates)
-      .eq('id', jobId)
-      .select()
-      .single();
-
-    if (error) {
-      logger.error('JobService.updateJob: update error', error);
-      throw new ValidationError('Failed to update job');
-    }
-
-    return updatedJob;
-  } catch (err: any) {
-    logger.error('JobService.updateJob unexpected error', err);
-    if (err instanceof NotFoundError || err instanceof ForbiddenError) throw err;
-    throw new ValidationError(err?.message || 'Failed to update job');
-  }
-};
-
-const deleteJob = async (jobId: string, employerId: string, userRole: UserRole): Promise<any> => {
-  const db = getDatabase() as AnyDB;
-
-  try {
-    const { data: existingJob } = await db.from('jobs').select('employer_id').eq('id', jobId).maybeSingle();
-
-    if (!existingJob) {
-      throw new NotFoundError('Job not found');
-    }
-
-    if (userRole !== UserRole.ADMIN && existingJob.employer_id !== employerId) {
-      throw new ForbiddenError('You do not have permission to delete this job');
-    }
-
-    const { error } = await db.from('jobs').delete().eq('id', jobId);
-
-    if (error) {
-      logger.error('JobService.deleteJob: delete error', error);
-      throw new ValidationError('Failed to delete job');
-    }
-
+    await job.deleteOne();
     return { message: 'Job deleted successfully' };
-  } catch (err: any) {
-    logger.error('JobService.deleteJob unexpected error', err);
-    if (err instanceof NotFoundError || err instanceof ForbiddenError) throw err;
-    throw new ValidationError(err?.message || 'Failed to delete job');
-  }
-};
-
-export const JobService = {
-  createJob,
-  getAllJobs,
-  getJobById,
-  getEmployerJobs,
-  updateJob,
-  deleteJob,
+  },
 };

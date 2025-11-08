@@ -2,7 +2,7 @@
 =========================================================
 
 ✅ COMPLETE SERVER APPLICATION
-├── Full TypeScript + Express + Supabase backend
+├── Full TypeScript + Express + Mongodb backend
 ├── Production-ready build (dist/ folder)
 ├── 29 API endpoints across 5 modules
 ├── JWT authentication with refresh tokens
@@ -42,7 +42,7 @@
 src/
 ├── config/               # Application configuration
 │   ├── env.ts           # Environment validation
-│   └── database.ts      # Supabase client
+│   └── database.ts      # Mongodb client
 ├── modules/             # Feature modules
 │   ├── auth/            # Authentication (4 files)
 │   ├── user/            # User management (3 files)
@@ -280,7 +280,7 @@ PROJECT STATUS: ✅ COMPLETE & PRODUCTION-READY
 
 Last Updated: 2025-10-29
 Version: 1.0.0
-Architecture: Modular TypeScript + Express + Supabase
+Architecture: Modular TypeScript + Express + Mongodb
 License: MIT
 
 For full documentation, see README.md

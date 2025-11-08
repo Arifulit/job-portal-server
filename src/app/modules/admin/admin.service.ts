@@ -1,4 +1,4 @@
-// ...existing code...
+
 import { getDatabase } from '@/app/config/database';
 import { ValidationError } from '@/app/utils/errors';
 import { logger } from '@/app/utils/logger';
@@ -317,4 +317,3 @@ export const AdminService = {
   getAllJobs,
   getAllApplications,
 };
-// ...existing code...

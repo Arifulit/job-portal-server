@@ -1,14 +1,12 @@
-// ...existing code...
 import { Request, Response } from 'express';
 import { UserService } from './user.service';
 import { ResponseHandler } from '@/app/utils/response';
 import { AuthenticatedRequest } from '@/app/types';
 import { catchAsync } from '@/app/utils/catchAsync';
 
-// ...existing code...
 const getProfile = catchAsync(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  if (!authReq.user || !authReq.user.id) {
+  if (!authReq.user?.id) {
     ResponseHandler.error(res, 'Unauthorized', 401);
     return;
   }
@@ -19,7 +17,7 @@ const getProfile = catchAsync(async (req: Request, res: Response) => {
 
 const updateProfile = catchAsync(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  if (!authReq.user || !authReq.user.id) {
+  if (!authReq.user?.id) {
     ResponseHandler.error(res, 'Unauthorized', 401);
     return;
   }
@@ -30,7 +28,7 @@ const updateProfile = catchAsync(async (req: Request, res: Response) => {
 
 const deleteAccount = catchAsync(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  if (!authReq.user || !authReq.user.id) {
+  if (!authReq.user?.id) {
     ResponseHandler.error(res, 'Unauthorized', 401);
     return;
   }
@@ -44,4 +42,3 @@ export const UserController = {
   updateProfile,
   deleteAccount,
 };
-// ...existing code...

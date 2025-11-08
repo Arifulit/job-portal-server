@@ -1,94 +1,47 @@
-import { getDatabase } from '@/app/config/database';
+
+import mongoose, { Types } from 'mongoose';
 import { ApplicationStatus, UserRole } from '@/app/types';
-import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '@/app/utils/errors';
+import { NotFoundError, ConflictError, ValidationError, ForbiddenError } from '@/app/utils/errors';
 import { logger } from '@/app/utils/logger';
 
-type AnyDB = any;
-
-function detectClient(db: AnyDB) {
-  if (!db) return 'unknown';
-  if (typeof db === 'function' || typeof db.raw === 'function') return 'knex';
-  if (typeof db.collection === 'function') return 'mongodb';
-  return 'mongoose';
-}
+// Mongoose Models
+const JobModel = mongoose.models.Job || mongoose.model('Job', new mongoose.Schema({}, { strict: false }), 'jobs');
+const ApplicationModel = mongoose.models.Application || mongoose.model('Application', new mongoose.Schema({}, { strict: false }), 'applications');
+const UserModel = mongoose.models.User || mongoose.model('User', new mongoose.Schema({}, { strict: false }), 'users');
 
 const nowIso = () => new Date().toISOString();
 
-const applyForJob = async (jobId: string, applicantId: string, applicationData: any) => {
-  const db = getDatabase() as AnyDB;
-  const client = detectClient(db);
-
+const toObjectId = (id: string) => {
   try {
-    if (client === 'knex') {
-      const job = await db('jobs').select('id', 'status').where({ id: jobId }).first();
-      if (!job) throw new NotFoundError('Job not found');
-      if ((job.status || '').toLowerCase() !== 'active') throw new ValidationError('This job is not accepting applications');
+    return new Types.ObjectId(id);
+  } catch {
+    return id;
+  }
+};
 
-      const existing = await db('applications').select('id').where({ job_id: jobId, applicant_id: applicantId }).first();
-      if (existing) throw new ConflictError('You have already applied for this job');
-
-      const doc = {
-        job_id: jobId,
-        applicant_id: applicantId,
-        status: ApplicationStatus.APPLIED,
-        resume_url: applicationData?.resume_url || null,
-        cover_letter: applicationData?.cover_letter || null,
-        applied_at: nowIso(),
-        updated_at: nowIso(),
-      };
-
-      const inserted = await db('applications').insert(doc).returning('*').catch(async () => {
-        const res = await db('applications').insert(doc);
-        const insertedId = Array.isArray(res) ? res[0] : res;
-        return await db('applications').where({ id: insertedId }).first();
-      });
-
-      // increment applications_count on jobs (best-effort)
-      await db('jobs').where({ id: jobId }).increment('applications_count', 1).catch(() => null);
-
-      return Array.isArray(inserted) ? inserted[0] : inserted;
-    }
-
-    if (client === 'mongodb') {
-      const job = (await db.collection('jobs').findOne({ id: jobId })) || (await db.collection('jobs').findOne({ _id: jobId } as any));
-      if (!job) throw new NotFoundError('Job not found');
-      if ((job.status || '').toLowerCase() !== 'active') throw new ValidationError('This job is not accepting applications');
-
-      const existing = await db.collection('applications').findOne({ job_id: jobId, applicant_id: applicantId });
-      if (existing) throw new ConflictError('You have already applied for this job');
-
-      const doc: any = {
-        job_id: jobId,
-        applicant_id: applicantId,
-        status: ApplicationStatus.APPLIED,
-        resume_url: applicationData?.resume_url || null,
-        cover_letter: applicationData?.cover_letter || null,
-        applied_at: nowIso(),
-        updated_at: nowIso(),
-      };
-
-      const result = await db.collection('applications').insertOne(doc);
-      await db.collection('jobs').updateOne({ id: jobId } as any, { $inc: { applications_count: 1 } }).catch(() => null);
-
-      return { ...doc, _id: result.insertedId };
-    }
-
-    // mongoose fallback
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mongoose = require('mongoose');
-    const JobModel = mongoose.models.Job || mongoose.model('Job', new mongoose.Schema({}, { strict: false }), 'jobs');
-    const ApplicationModel =
-      mongoose.models.Application || mongoose.model('Application', new mongoose.Schema({}, { strict: false }), 'applications');
-
-    let job = await JobModel.findOne({ id: jobId }).lean();
-    if (!job) job = await JobModel.findOne({ _id: jobId }).lean();
+// Apply for a job
+const applyForJob = async (jobId: string, applicantId: string, applicationData: any) => {
+  try {
+    // Find job by _id (ObjectId)
+    const job: any = await JobModel.findOne({ _id: toObjectId(jobId) }).lean();
     if (!job) throw new NotFoundError('Job not found');
-    if ((job.status || '').toLowerCase() !== 'active') throw new ValidationError('This job is not accepting applications');
+    
+    if ((job.status || '').toLowerCase() !== 'active') {
+      throw new ValidationError('This job is not accepting applications');
+    }
 
-    const existingApp = await ApplicationModel.findOne({ job_id: jobId, applicant_id: applicantId }).lean();
-    if (existingApp) throw new ConflictError('You have already applied for this job');
+    // Check if already applied
+    const existing = await ApplicationModel.findOne({ 
+      job_id: jobId, 
+      applicant_id: applicantId 
+    }).lean();
+    
+    if (existing) {
+      throw new ConflictError('You have already applied for this job');
+    }
 
-    const appDoc = {
+    // Create application document
+    const doc = {
       job_id: jobId,
       applicant_id: applicantId,
       status: ApplicationStatus.APPLIED,
@@ -98,101 +51,98 @@ const applyForJob = async (jobId: string, applicantId: string, applicationData: 
       updated_at: nowIso(),
     };
 
-    const app = await new ApplicationModel(appDoc).save();
-    await JobModel.updateOne({ id: jobId }, { $inc: { applications_count: 1 } }).catch(() => null);
+    const app = await new ApplicationModel(doc).save();
+    
+    // Increment applications count on job
+    await JobModel.updateOne(
+      { _id: toObjectId(jobId) }, 
+      { 
+        $inc: { applications_count: 1 }, 
+        $set: { updated_at: nowIso() } 
+      }
+    ).catch(() => null);
+
     return app.toObject ? app.toObject() : app;
   } catch (err: any) {
-    logger.error('ApplicationService.applyForJob error', { client, error: err });
-    if (err instanceof NotFoundError || err instanceof ConflictError || err instanceof ValidationError) throw err;
+    logger.error('ApplicationService.applyForJob error', { error: err?.message || err });
+    if (err instanceof NotFoundError || err instanceof ConflictError || err instanceof ValidationError) {
+      throw err;
+    }
     throw new ValidationError('Failed to submit application');
   }
 };
 
-const getApplicationsByJob = async (jobId: string, employerId: string, userRole: UserRole) => {
-  const db = getDatabase() as AnyDB;
-  const client = detectClient(db);
-
+// Get all applications for a specific job (only for employer/recruiter/admin)
+const getApplicationsByJob = async (jobId: string, userId: string, userRole: UserRole) => {
   try {
-    if (client === 'knex') {
-      if (userRole !== UserRole.ADMIN) {
-        const job = await db('jobs').select('employer_id').where({ id: jobId }).first();
-        if (!job || job.employer_id !== employerId) throw new ForbiddenError('You do not have permission to view these applications');
-      }
+    // Find the job first
+    const job: any = await JobModel.findOne({ _id: toObjectId(jobId) }).lean();
+    
+    logger.info('getApplicationsByJob - Job lookup', { 
+      jobId, 
+      userId, 
+      userRole,
+      found: !!job,
+      jobEmployerId: job?.employer_id,
+      jobEmployerIdAlt: job?.employerId
+    });
 
-      const rows = await db('applications')
-        .leftJoin('users', 'applications.applicant_id', 'users.id')
-        .select(
-          'applications.*',
-          db.raw("json_build_object('id', users.id, 'full_name', users.full_name, 'email', users.email, 'phone', users.phone) as applicant")
-        )
-        .where('applications.job_id', jobId)
-        .orderBy('applications.applied_at', 'desc');
+    if (!job) {
+      throw new NotFoundError('Job not found');
+    }
 
-      return rows.map((r: any) => {
-        try {
-          if (typeof r.applicant === 'string') r.applicant = JSON.parse(r.applicant);
-        } catch {}
-        return r;
+    // Check if user has permission to view applications
+    if (userRole === UserRole.ADMIN) {
+      logger.info('getApplicationsByJob - Admin access granted');
+    } else if (userRole === UserRole.RECRUITER) {
+      logger.info('getApplicationsByJob - Recruiter access granted');
+    } else {
+      // For employers, check if they own the job
+      const jobOwnerId = String(job.employer_id || job.employerId || job.employer || '');
+      const requestUserId = String(userId);
+      
+      logger.info('getApplicationsByJob - Owner check', { 
+        jobOwnerId, 
+        requestUserId,
+        match: jobOwnerId === requestUserId 
       });
-    }
-
-    if (client === 'mongodb') {
-      if (userRole !== UserRole.ADMIN) {
-        const job = (await db.collection('jobs').findOne({ id: jobId })) || (await db.collection('jobs').findOne({ _id: jobId } as any));
-        if (!job || job.employer_id !== employerId) throw new ForbiddenError('You do not have permission to view these applications');
+      
+      if (!jobOwnerId) {
+        throw new ForbiddenError('Job has no employer assigned');
       }
-
-      const apps = await db
-        .collection('applications')
-        .aggregate([
-          { $match: { job_id: jobId } },
-          { $sort: { applied_at: -1 } },
-          {
-            $lookup: {
-              from: 'users',
-              localField: 'applicant_id',
-              foreignField: 'id',
-              as: 'applicant_docs',
-            },
-          },
-          { $unwind: { path: '$applicant_docs', preserveNullAndEmptyArrays: true } },
-          {
-            $addFields: {
-              applicant: {
-                id: '$applicant_docs.id',
-                full_name: '$applicant_docs.full_name',
-                email: '$applicant_docs.email',
-                phone: '$applicant_docs.phone',
-              },
-            },
-          },
-          { $project: { applicant_docs: 0 } },
-        ])
-        .toArray();
-
-      return apps;
+      
+      if (jobOwnerId !== requestUserId) {
+        throw new ForbiddenError('You do not have permission to view these applications');
+      }
     }
 
-    // mongoose
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mongoose = require('mongoose');
-    const ApplicationModel =
-      mongoose.models.Application || mongoose.model('Application', new mongoose.Schema({}, { strict: false }), 'applications');
-    const JobModel = mongoose.models.Job || mongoose.model('Job', new mongoose.Schema({}, { strict: false }), 'jobs');
-
-    if (userRole !== UserRole.ADMIN) {
-      const job = await JobModel.findOne({ id: jobId }).lean();
-      if (!job || job.employer_id !== employerId) throw new ForbiddenError('You do not have permission to view these applications');
-    }
-
-    const apps = await ApplicationModel.aggregate([
-      { $match: { job_id: jobId } },
+    // Find applications by job_id (stored as string in applications collection)
+    const jobIdStr = String(jobId);
+    
+    // Fetch applications with applicant details using aggregation
+    const applications = await ApplicationModel.aggregate([
+      { 
+        $match: { 
+          job_id: jobIdStr
+        } 
+      },
       { $sort: { applied_at: -1 } },
+      {
+        $addFields: {
+          applicant_id_obj: {
+            $cond: {
+              if: { $regexMatch: { input: { $toString: '$applicant_id' }, regex: /^[0-9a-fA-F]{24}$/ } },
+              then: { $toObjectId: '$applicant_id' },
+              else: '$applicant_id'
+            }
+          }
+        }
+      },
       {
         $lookup: {
           from: 'users',
-          localField: 'applicant_id',
-          foreignField: 'id',
+          localField: 'applicant_id_obj',
+          foreignField: '_id',
           as: 'applicant_docs',
         },
       },
@@ -200,117 +150,85 @@ const getApplicationsByJob = async (jobId: string, employerId: string, userRole:
       {
         $addFields: {
           applicant: {
-            id: '$applicant_docs.id',
+            id: '$applicant_docs._id',
             full_name: '$applicant_docs.full_name',
             email: '$applicant_docs.email',
             phone: '$applicant_docs.phone',
           },
         },
       },
-      { $project: { applicant_docs: 0 } },
-    ]).exec();
+      { $project: { applicant_docs: 0, applicant_id_obj: 0 } },
+    ]);
 
-    return apps;
+    logger.info('getApplicationsByJob - Applications found', { 
+      count: applications.length,
+      jobId: jobIdStr
+    });
+
+    return applications;
   } catch (err: any) {
-    logger.error('ApplicationService.getApplicationsByJob error', { client, error: err });
-    if (err instanceof ForbiddenError) throw err;
-    throw new ValidationError('Failed to retrieve applications');
+    logger.error('ApplicationService.getApplicationsByJob error', { 
+      jobId, 
+      userId, 
+      userRole,
+      error: err?.message || err,
+      stack: err?.stack 
+    });
+    if (err instanceof NotFoundError || err instanceof ForbiddenError) {
+      throw err;
+    }
+    throw new ValidationError('Failed to fetch applications');
   }
 };
 
+// Get all applications submitted by a specific user
 const getMyApplications = async (applicantId: string) => {
-  const db = getDatabase() as AnyDB;
-  const client = detectClient(db);
-
   try {
-    if (client === 'knex') {
-      const rows = await db('applications')
-        .leftJoin('jobs', 'applications.job_id', 'jobs.id')
-        .leftJoin('users as employers', 'jobs.employer_id', 'employers.id')
-        .select(
-          'applications.*',
-          'jobs.id as job_id',
-          'jobs.title as job_title',
-          'jobs.location as job_location',
-          'jobs.status as job_status',
-          db.raw("json_build_object('company_name', employers.company_name) as job_company")
-        )
-        .where('applications.applicant_id', applicantId)
-        .orderBy('applications.applied_at', 'desc');
-
-      return rows.map((r: any) => {
-        try {
-          if (typeof r.job_company === 'string') r.job_company = JSON.parse(r.job_company);
-        } catch {}
-        return r;
-      });
-    }
-
-    if (client === 'mongodb') {
-      const apps = await db
-        .collection('applications')
-        .aggregate([
-          { $match: { applicant_id: applicantId } },
-          { $sort: { applied_at: -1 } },
-          {
-            $lookup: {
-              from: 'jobs',
-              localField: 'job_id',
-              foreignField: 'id',
-              as: 'job_docs',
-            },
-          },
-          { $unwind: { path: '$job_docs', preserveNullAndEmptyArrays: true } },
-          {
-            $lookup: {
-              from: 'users',
-              localField: 'job_docs.employer_id',
-              foreignField: 'id',
-              as: 'employer_docs',
-            },
-          },
-          { $unwind: { path: '$employer_docs', preserveNullAndEmptyArrays: true } },
-          {
-            $addFields: {
-              job: {
-                id: '$job_docs.id',
-                title: '$job_docs.title',
-                company_name: '$employer_docs.company_name',
-                location: '$job_docs.location',
-                status: '$job_docs.status',
-              },
-            },
-          },
-          { $project: { job_docs: 0, employer_docs: 0 } },
-        ])
-        .toArray();
-
-      return apps;
-    }
-
-    // mongoose
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mongoose = require('mongoose');
-    const ApplicationModel =
-      mongoose.models.Application || mongoose.model('Application', new mongoose.Schema({}, { strict: false }), 'applications');
-
-    const jobs = await ApplicationModel.aggregate([
+    // Fetch applications with job and company details using aggregation
+    const applications = await ApplicationModel.aggregate([
       { $match: { applicant_id: applicantId } },
       { $sort: { applied_at: -1 } },
       {
+        $addFields: {
+          job_id_obj: {
+            $cond: {
+              if: { $regexMatch: { input: { $toString: '$job_id' }, regex: /^[0-9a-fA-F]{24}$/ } },
+              then: { $toObjectId: '$job_id' },
+              else: '$job_id'
+            }
+          }
+        }
+      },
+      {
         $lookup: {
           from: 'jobs',
-          localField: 'job_id',
-          foreignField: 'id',
+          localField: 'job_id_obj',
+          foreignField: '_id',
           as: 'job_docs',
         },
       },
       { $unwind: { path: '$job_docs', preserveNullAndEmptyArrays: true } },
       {
+        $addFields: {
+          employer_id_obj: {
+            $cond: {
+              if: { 
+                $and: [
+                  { $ifNull: ['$job_docs.employer_id', false] },
+                  { $regexMatch: { input: { $toString: '$job_docs.employer_id' }, regex: /^[0-9a-fA-F]{24}$/ } }
+                ]
+              },
+              then: { $toObjectId: '$job_docs.employer_id' },
+              else: '$job_docs.employer_id'
+            }
+          }
+        }
+      },
+      {
         $lookup: {
           from: 'users',
-          localField: 'job_docs.employer_id',
-          foreignField: 'id',
+          localField: 'employer_id_obj',
+          foreignField: '_id',
           as: 'employer_docs',
         },
       },
@@ -318,7 +236,7 @@ const getMyApplications = async (applicantId: string) => {
       {
         $addFields: {
           job: {
-            id: '$job_docs.id',
+            id: '$job_docs._id',
             title: '$job_docs.title',
             company_name: '$employer_docs.company_name',
             location: '$job_docs.location',
@@ -326,134 +244,88 @@ const getMyApplications = async (applicantId: string) => {
           },
         },
       },
-      { $project: { job_docs: 0, employer_docs: 0 } },
-    ]).exec();
+      { $project: { job_docs: 0, employer_docs: 0, job_id_obj: 0, employer_id_obj: 0 } },
+    ]);
 
-    return jobs;
+    return applications;
   } catch (err: any) {
-    logger.error('ApplicationService.getMyApplications error', { client, error: err });
-    throw new ValidationError('Failed to retrieve applications');
+    logger.error('ApplicationService.getMyApplications error', { error: err?.message || err, stack: err?.stack });
+    throw new ValidationError('Failed to fetch your applications');
   }
 };
 
+// Update application status (only employer/recruiter/admin)
 const updateApplicationStatus = async (
-  applicationId: string,
-  newStatus: ApplicationStatus,
-  userId: string,
+  applicationId: string, 
+  newStatus: ApplicationStatus, 
+  userId: string, 
   userRole: UserRole
 ) => {
-  const db = getDatabase() as AnyDB;
-  const client = detectClient(db);
-
   try {
-    if (client === 'knex') {
-      const application = await db('applications')
-        .select('applications.*', 'jobs.employer_id')
-        .leftJoin('jobs', 'applications.job_id', 'jobs.id')
-        .where('applications.id', applicationId)
-        .first();
-      if (!application) throw new NotFoundError('Application not found');
-
-      if (userRole !== UserRole.ADMIN && userRole !== UserRole.RECRUITER) {
-        if (application.employer_id !== userId) throw new ForbiddenError('You do not have permission to update this application');
-      }
-
-      const updated = await db('applications')
-        .where({ id: applicationId })
-        .update({ status: newStatus, updated_at: nowIso() })
-        .returning('*')
-        .catch(async () => {
-          await db('applications').where({ id: applicationId }).update({ status: newStatus, updated_at: nowIso() });
-          return await db('applications').where({ id: applicationId }).first();
-        });
-
-      return Array.isArray(updated) ? updated[0] : updated;
+    // Find the application
+    const app: any = await ApplicationModel.findById(toObjectId(applicationId)).lean();
+    if (!app) {
+      throw new NotFoundError('Application not found');
     }
 
-    if (client === 'mongodb') {
-      const application = await db
-        .collection('applications')
-        .aggregate([
-          { $match: { id: applicationId } },
-          {
-            $lookup: {
-              from: 'jobs',
-              localField: 'job_id',
-              foreignField: 'id',
-              as: 'job_docs',
-            },
-          },
-          { $unwind: { path: '$job_docs', preserveNullAndEmptyArrays: true } },
-        ])
-        .toArray()
-        .then((a: any[]) => a[0]);
-
-      if (!application) throw new NotFoundError('Application not found');
-      if (userRole !== UserRole.ADMIN && userRole !== UserRole.RECRUITER) {
-        if (application.job_docs?.employer_id !== userId) throw new ForbiddenError('You do not have permission to update this application');
-      }
-
-      await db.collection('applications').updateOne({ id: applicationId } as any, { $set: { status: newStatus, updated_at: nowIso() } });
-      return await db.collection('applications').findOne({ id: applicationId } as any);
-    }
-
-    // mongoose
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mongoose = require('mongoose');
-    const ApplicationModel =
-      mongoose.models.Application || mongoose.model('Application', new mongoose.Schema({}, { strict: false }), 'applications');
-    const application = (await ApplicationModel.findOne({ id: applicationId }).lean()) || (await ApplicationModel.findOne({ _id: applicationId }).lean());
-    if (!application) throw new NotFoundError('Application not found');
-
+    // Check if user has permission to update
     if (userRole !== UserRole.ADMIN && userRole !== UserRole.RECRUITER) {
-      const JobModel = mongoose.models.Job || mongoose.model('Job', new mongoose.Schema({}, { strict: false }), 'jobs');
-      const job = await JobModel.findOne({ id: application.job_id }).lean();
-      if (job?.employer_id !== userId) throw new ForbiddenError('You do not have permission to update this application');
+      // Check if user is the employer who posted the job
+      const job: any = await JobModel.findOne({ _id: toObjectId(app.job_id) }).lean();
+      if (!job || job.employer_id !== userId) {
+        throw new ForbiddenError('You do not have permission to update this application');
+      }
     }
 
-    await ApplicationModel.updateOne({ id: applicationId }, { $set: { status: newStatus, updated_at: nowIso() } });
-    return await ApplicationModel.findOne({ id: applicationId }).lean();
+    // Update the application
+    const updated = await ApplicationModel.findByIdAndUpdate(
+      toObjectId(applicationId),
+      { 
+        status: newStatus, 
+        updated_at: nowIso() 
+      },
+      { new: true }
+    );
+
+    return updated?.toObject ? updated.toObject() : updated;
   } catch (err: any) {
-    logger.error('ApplicationService.updateApplicationStatus error', { client, error: err });
-    if (err instanceof NotFoundError || err instanceof ForbiddenError) throw err;
+    logger.error('ApplicationService.updateApplicationStatus error', { error: err?.message || err });
+    if (err instanceof NotFoundError || err instanceof ForbiddenError) {
+      throw err;
+    }
     throw new ValidationError('Failed to update application status');
   }
 };
 
+// Delete an application (only by applicant)
 const deleteApplication = async (applicationId: string, applicantId: string) => {
-  const db = getDatabase() as AnyDB;
-  const client = detectClient(db);
-
   try {
-    if (client === 'knex') {
-      const app = await db('applications').select('applicant_id').where({ id: applicationId }).first();
-      if (!app) throw new NotFoundError('Application not found');
-      if (app.applicant_id !== applicantId) throw new ForbiddenError('You do not have permission to delete this application');
-      await db('applications').where({ id: applicationId }).del();
-      return { message: 'Application deleted successfully' };
+    const app: any = await ApplicationModel.findById(toObjectId(applicationId)).lean();
+    if (!app) {
+      throw new NotFoundError('Application not found');
+    }
+    
+    if (app.applicant_id !== applicantId) {
+      throw new ForbiddenError('Not authorized to delete this application');
     }
 
-    if (client === 'mongodb') {
-      const app = (await db.collection('applications').findOne({ id: applicationId })) || (await db.collection('applications').findOne({ _id: applicationId } as any));
-      if (!app) throw new NotFoundError('Application not found');
-      if (app.applicant_id !== applicantId) throw new ForbiddenError('You do not have permission to delete this application');
-      await db.collection('applications').deleteOne({ id: applicationId } as any);
-      return { message: 'Application deleted successfully' };
-    }
+    await ApplicationModel.deleteOne({ _id: toObjectId(applicationId) });
+    
+    // Decrement applications count on job
+    await JobModel.updateOne(
+      { _id: toObjectId(app.job_id) }, 
+      { 
+        $inc: { applications_count: -1 }, 
+        $set: { updated_at: nowIso() } 
+      }
+    ).catch(() => null);
 
-    // mongoose
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mongoose = require('mongoose');
-    const ApplicationModel =
-      mongoose.models.Application || mongoose.model('Application', new mongoose.Schema({}, { strict: false }), 'applications');
-    const app = (await ApplicationModel.findOne({ id: applicationId }).lean()) || (await ApplicationModel.findOne({ _id: applicationId }).lean());
-    if (!app) throw new NotFoundError('Application not found');
-    if (app.applicant_id !== applicantId) throw new ForbiddenError('You do not have permission to delete this application');
-    await ApplicationModel.deleteOne({ id: applicationId });
     return { message: 'Application deleted successfully' };
   } catch (err: any) {
-    logger.error('ApplicationService.deleteApplication error', { client, error: err });
-    if (err instanceof NotFoundError || err instanceof ForbiddenError) throw err;
+    logger.error('ApplicationService.deleteApplication error', { error: err?.message || err });
+    if (err instanceof NotFoundError || err instanceof ForbiddenError) {
+      throw err;
+    }
     throw new ValidationError('Failed to delete application');
   }
 };

@@ -38,8 +38,7 @@ if (process.env.NODE_ENV === 'development') {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Handle malformed JSON body errors from express.json
-// must be four-arg error handler so express treats it as error middleware
+// Handle malformed JSON body errors from express.json (four-arg middleware must be error middleware)
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   const isEntityParseFailed = err && err.type === 'entity.parse.failed';
   const isSyntaxError = err instanceof SyntaxError && 'body' in err;

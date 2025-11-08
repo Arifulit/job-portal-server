@@ -1,6 +1,6 @@
 # 💼 Career-Code: Professional Job Portal Backend
 
-A **production-ready**, **enterprise-grade** Node.js + Express + TypeScript server application for a comprehensive Job Portal system with role-based access control, JWT authentication, and Supabase database integration.
+A **production-ready**, **enterprise-grade** Node.js + Express + TypeScript server application for a comprehensive Job Portal system with role-based access control, JWT authentication, and mongodb database integration.
 
 ## 🏗️ **System Architecture**
 
@@ -9,7 +9,7 @@ This is a **modular, scalable backend** designed following industry best practic
 - **Modular Architecture**: Feature-based organization (controllers, services, routes, models, middleware)
 - **TypeScript**: Full type safety and modern JavaScript features
 - **Security First**: JWT authentication, password hashing, input validation, rate limiting
-- **Database**: Supabase (PostgreSQL) with Row Level Security
+- **Database**: Mongodb (PostgreSQL) with Row Level Security
 - **Professional Error Handling**: Centralized error management with custom error classes
 - **Production Ready**: Environment-based configuration, logging, compression, CORS
 
@@ -73,7 +73,7 @@ This is a **modular, scalable backend** designed following industry best practic
 | **Node.js** | Runtime environment |
 | **Express** | Web framework |
 | **TypeScript** | Type-safe development |
-| **Supabase** | PostgreSQL database with real-time capabilities |
+| **Mongodb** | PostgreSQL database with real-time capabilities |
 | **JWT** | Authentication tokens |
 | **Bcrypt** | Password hashing |
 | **Zod** | Schema validation |
@@ -94,7 +94,7 @@ career-code-server/
 ├── src/
 │   ├── config/                    # Configuration files
 │   │   ├── env.ts                 # Environment validation
-│   │   └── database.ts            # Supabase client setup
+│   │   └── database.ts            # Mongodb client setup
 │   │
 │   ├── modules/                   # Feature modules
 │   │   ├── auth/                  # Authentication module
@@ -161,7 +161,7 @@ career-code-server/
 ### **Prerequisites**
 - Node.js >= 18.0.0
 - npm >= 9.0.0
-- Supabase account (database already provisioned)
+- Mongodb account (database already provisioned)
 
 ### **Steps**
 
@@ -175,7 +175,7 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` with your actual values (Supabase credentials are already configured).
+Edit `.env` with your actual values (Mongodb credentials are already configured).
 
 3. **Database Setup**
 
@@ -196,10 +196,10 @@ All tables have Row Level Security (RLS) enabled.
 NODE_ENV=development
 PORT=5000
 
-# Supabase Database
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_KEY=your_service_key  # Optional
+# Mongodb Database
+Mongodb_URL=your_Mongodb_url
+Mongodb_ANON_KEY=your_anon_key
+Mongodb_SERVICE_KEY=your_service_key  # Optional
 
 # JWT Configuration
 JWT_ACCESS_SECRET=your_32_char_secret
@@ -414,7 +414,7 @@ The collection automatically manages:
 | **Password Security** | Bcrypt hashing with 10 rounds |
 | **JWT Tokens** | Separate access (15m) and refresh (7d) tokens |
 | **Input Validation** | Zod schema validation on all requests |
-| **SQL Injection** | Parameterized queries via Supabase client |
+| **SQL Injection** | Parameterized queries via Mongodb client |
 | **XSS Protection** | Helmet middleware |
 | **CORS** | Configured origin whitelist |
 | **Rate Limiting** | 100 requests per 15 minutes |
@@ -500,7 +500,7 @@ MIT License - Free to use for educational and commercial purposes.
 
 **Project**: Career-Code Job Portal Backend
 **Type**: Final Year Project
-**Architecture**: Modular TypeScript + Express + Supabase
+**Architecture**: Modular TypeScript + Express + Mongodb
 **Features**: Complete CRUD operations, Authentication, Authorization, Database Integration
 
 ---

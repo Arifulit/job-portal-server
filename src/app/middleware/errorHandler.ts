@@ -41,6 +41,11 @@ export const errorHandler = (
   return ResponseHandler.serverError(res, 'An unexpected error occurred');
 };
 
-export const notFoundHandler = (req: Request, res: Response): Response => {
-  return ResponseHandler.notFound(res, `Cannot ${req.method} ${req.path}`);
+export const notFoundHandler = (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    message: 'Not Found',
+    path: req.originalUrl,
+    timestamp: new Date().toISOString(),
+  });
 };

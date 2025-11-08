@@ -1,7 +1,7 @@
 {
   "name": "career-code-server",
   "version": "1.0.0",
-  "description": "Professional Job Portal Backend - Modular TypeScript + Express + Supabase",
+  "description": "Professional Job Portal Backend - Modular TypeScript + Express ",
   "main": "dist/server.js",
   "private": true,
   "scripts": {
@@ -33,7 +33,7 @@
     "http-status-codes": "^2.3.0",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.20.0",
-    "mongoose": "^8.19.2",
+    "mongoose": "^8.19.3",
     "morgan": "^1.10.0",
     "redis": "^5.9.0",
     "winston": "^3.11.0",

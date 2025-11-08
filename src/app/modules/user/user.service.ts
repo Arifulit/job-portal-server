@@ -1,10 +1,17 @@
 import mongoose from 'mongoose';
 import UserModel from './user.model';
 
+const ensureMongooseConnected = () => {
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error('Database not connected. Initialize mongoose before calling UserService');
+  }
+};
+
 const getUserById = async (id: string): Promise<any> => {
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+  if (!id || !mongoose.isValidObjectId(id)) {
     throw new Error('Invalid user id');
   }
+  ensureMongooseConnected();
 
   const user = await UserModel.findById(id).lean().exec();
   if (!user) throw new Error('User not found');
@@ -17,9 +24,10 @@ const getUserById = async (id: string): Promise<any> => {
 };
 
 const updateProfile = async (id: string, payload: Partial<Record<string, any>>): Promise<any> => {
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+  if (!id || !mongoose.isValidObjectId(id)) {
     throw new Error('Invalid user id');
   }
+  ensureMongooseConnected();
 
   // allow only safe updatable fields
   const allowed: Record<string, any> = {};
@@ -38,9 +46,10 @@ const updateProfile = async (id: string, payload: Partial<Record<string, any>>):
 };
 
 const deleteAccount = async (id: string): Promise<any> => {
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+  if (!id || !mongoose.isValidObjectId(id)) {
     throw new Error('Invalid user id');
   }
+  ensureMongooseConnected();
 
   const res = await UserModel.findByIdAndDelete(id).lean().exec();
   if (!res) throw new Error('User not found');

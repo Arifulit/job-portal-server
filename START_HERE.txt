@@ -9,7 +9,7 @@ A professional, production-ready Node.js + TypeScript backend server for a compl
 - 29 REST API endpoints
 - JWT authentication with refresh tokens
 - Role-based access control (4 user roles)
-- Supabase PostgreSQL database
+- Mongodb PostgreSQL database
 - Complete security implementation
 - 60+ pages of documentation
 - Postman testing collection
@@ -34,7 +34,7 @@ A professional, production-ready Node.js + TypeScript backend server for a compl
 💡 FIRST TIME SETUP
 -------------------
 
-The project is already configured! The .env file contains working Supabase credentials.
+The project is already configured! The .env file contains working Mongodb credentials.
 
 To verify it's working:
 curl http://localhost:5000/api/v1/health
@@ -141,7 +141,7 @@ USER ROLES:
 - Modular design (5 feature modules)
 - TypeScript (100% type-safe)
 - Express framework
-- Supabase database
+- Mongodb database
 - RESTful API design
 - Centralized error handling
 - Professional logging
@@ -237,7 +237,7 @@ Server won't start?
 → Run: npm install
 
 Database errors?
-→ Verify Supabase credentials in .env
+→ Verify Mongodb credentials in .env
 → Check internet connection
 → Database tables are already created
 
