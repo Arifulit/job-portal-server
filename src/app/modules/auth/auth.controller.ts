@@ -88,6 +88,7 @@ const changePassword = catchAsync(async (req: Request, res: Response) => {
   return;
 });
 
+// ...existing imports...
 const getProfile = catchAsync(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   if (!authReq.user || !authReq.user.id) {
@@ -95,7 +96,23 @@ const getProfile = catchAsync(async (req: Request, res: Response) => {
     return;
   }
 
-  ResponseHandler.success(res, 'Profile retrieved successfully', { user: authReq.user });
+  // load full user from DB (exclude password)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const mongoose = require('mongoose');
+  const UserModel = mongoose.models.User || require('../user/user.model').default;
+
+  const userId = authReq.user.id;
+  let user = await UserModel.findOne({ id: userId }).select('-password_hash -__v').lean().exec();
+  if (!user && mongoose.Types.ObjectId.isValid(userId)) {
+    user = await UserModel.findById(userId).select('-password_hash -__v').lean().exec();
+  }
+
+  if (!user) {
+    ResponseHandler.error(res, 'User not found', 404);
+    return;
+  }
+
+  ResponseHandler.success(res, 'Profile retrieved successfully', { user });
   return;
 });
 

@@ -150,6 +150,27 @@ const getAllApplications = catchAsync(async (_req: Request, res: Response, _next
   }
 });
 
+
+// ...existing code...
+const getAdminProfile = catchAsync(async (req: Request, res: Response, _next: NextFunction) => {
+  // Expect authenticated user info on req.user (adjust if you use a different property)
+  const userId = (req as any).user?.id || (req as any).user?._id || req.params.userId;
+  if (!userId) {
+    ResponseHandler.error(res, 'Authenticated user not found', 401);
+    return;
+  }
+
+  const user = await UserModel.findById(userId).select('-password_hash').lean().exec();
+  if (!user) {
+    ResponseHandler.error(res, 'User not found', 404);
+    return;
+  }
+
+  ResponseHandler.success(res, 'Profile retrieved successfully', { user });
+});
+
+
+
 export const AdminController = {
   getAllUsers,
   updateUserStatus,
@@ -157,4 +178,5 @@ export const AdminController = {
   getDashboardStats,
   getAllJobs,
   getAllApplications,
+  getAdminProfile,
 };

@@ -17,4 +17,5 @@ router.get('/dashboard', AdminController.getDashboardStats);
 router.get('/jobs', AdminController.getAllJobs);
 router.get('/applications', AdminController.getAllApplications);
 
+router.get('/profile', /* authMiddleware, */ AdminController.getAdminProfile);
 export default router;
