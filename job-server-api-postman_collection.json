@@ -1,92 +1,681 @@
 {
   "info": {
-    "_postman_id": "b1a23d4f-5678-90ab-cdef-1234567890ab",
-    "name": "JobPortal Auth",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "name": "Job Portal API Full",
+    "description": "Full Postman collection for Career-Code Job Portal backend (includes example bodies and simple tests that save tokens/ids to collection variables).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": {
+      "major": 1,
+      "minor": 0,
+      "patch": 0
+    }
   },
   "item": [
     {
-      "name": "Register Candidate",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"Password123\",\n  \"role\": \"candidate\"\n}"
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"candidate@example.com\",\n  \"password\": \"StrongP@ssw0rd\",\n  \"role\": \"candidate\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/register"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json();",
+                  "const d = json.data || json;",
+                  "if (d.accessToken) pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "if (d.refreshToken) pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "if (d.user && d.user._id) pm.collectionVariables.set('userId', d.user._id);"
+                ],
+
+                "type": "text/javascript"
+              }
+            }
+          ]
         },
-        "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"] }
-      }
-    },
-    {
-      "name": "Register Employer",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Acme Corp\",\n  \"email\": \"employer@example.com\",\n  \"password\": \"Password123\",\n  \"role\": \"employer\"\n}"
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"candidate@example.com\",\n  \"password\": \"StrongP@ssw0rd\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const d = json.data || json;",
+                  "pm.expect(d.accessToken || d.token).to.exist;",
+                  "if (d.accessToken) pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "if (d.refreshToken) pm.collectionVariables.set('refreshToken', d.refreshToken);",
+                  "if (d.user && d.user._id) pm.collectionVariables.set('userId', d.user._id);"
+                ],
+
+                "type": "text/javascript"
+              }
+            }
+          ]
         },
-        "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"] }
-      }
-    },
-    {
-      "name": "Register Recruiter",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Recruiter One\",\n  \"email\": \"recruiter@example.com\",\n  \"password\": \"Password123\",\n  \"role\": \"recruiter\"\n}"
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"refreshToken\": \"{{refreshToken}}\" }" },
+            "url": "{{baseUrl}}/auth/refresh-token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "const d = json.data || json;",
+                  "if (d.accessToken) pm.collectionVariables.set('accessToken', d.accessToken);",
+                  "if (d.refreshToken) pm.collectionVariables.set('refreshToken', d.refreshToken);"
+                ],
+
+                "type": "text/javascript"
+              }
+            }
+          ]
         },
-        "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"] }
-      }
-    },
-    {
-      "name": "Register Admin",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"name\": \"Admin One\",\n  \"email\": \"admin@example.com\",\n  \"password\": \"Password123\",\n  \"role\": \"admin\"\n}"
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"refreshToken\": \"{{refreshToken}}\" }" },
+            "url": "{{baseUrl}}/auth/logout"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.collectionVariables.unset('accessToken');",
+                  "pm.collectionVariables.unset('refreshToken');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
         },
-        "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api","v1","auth","register"] }
-      }
+        {
+          "name": "Get Current User (me)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/me"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "if (json._id) pm.collectionVariables.set('userId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
     },
     {
-      "name": "Login User",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+      "name": "Candidate",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/candidate/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" }
+            }
+          ]
         },
-        "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api","v1","auth","login"] }
-      }
+        {
+          "name": "Update Profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"headline\": \"Frontend Developer\",\n  \"bio\": \"Experienced React developer\",\n  \"location\": \"Dhaka\",\n  \"phone\": \"+8801XXXXXXXXX\"\n}"
+            },
+            "url": "{{baseUrl}}/candidate/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+            }
+          ]
+        },
+        {
+          "name": "Add Skill",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"skill_name\": \"TypeScript\",\n  \"proficiency\": \"advanced\"\n}" },
+            "url": "{{baseUrl}}/candidate/skills"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json(); if (json._id) pm.collectionVariables.set('skillId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Skills",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/candidate/skills"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+            }
+          ]
+        },
+        {
+          "name": "Delete Skill",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": "{{baseUrl}}/candidate/skills/{{skillId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200 or 204', function () { pm.expect(pm.response.code).to.be.oneOf([200,204]); });"], "type": "text/javascript" }
+            }
+          ]
+        },
+        {
+          "name": "Add Education",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"institution\": \"XYZ University\",\n  \"degree\": \"BSc\",\n  \"field_of_study\": \"Computer Science\",\n  \"start_date\": \"2016-08-01\",\n  \"end_date\": \"2020-05-01\",\n  \"description\": \"Graduated with honors\"\n}"
+            },
+            "url": "{{baseUrl}}/candidate/education"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json(); if (json._id) pm.collectionVariables.set('educationId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Education",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/candidate/education"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+            }
+          ]
+        },
+        {
+          "name": "Delete Education",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": "{{baseUrl}}/candidate/education/{{educationId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200 or 204', function () { pm.expect(pm.response.code).to.be.oneOf([200,204]); });"], "type": "text/javascript" }
+            }
+          ]
+        },
+        {
+          "name": "Add Experience",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company\": \"Acme Ltd\",\n  \"position\": \"Frontend Engineer\",\n  \"start_date\": \"2020-06-01\",\n  \"end_date\": \"2023-07-01\",\n  \"description\": \"Built SPA apps\"\n}"
+            },
+            "url": "{{baseUrl}}/candidate/experience"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json(); if (json._id) pm.collectionVariables.set('experienceId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Experience",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/candidate/experience"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+            }
+          ]
+        },
+        {
+          "name": "Get My Applications",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/candidate/applications"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" }
+            }
+          ]
+        }
+      ]
     },
     {
-      "name": "Refresh Token",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{}" },
-        "url": { "raw": "{{base_url}}/api/v1/auth/refresh", "host": ["{{base_url}}"], "path": ["api","v1","auth","refresh"] }
-      }
+      "name": "Recruiter",
+      "item": [
+        {
+          "name": "Get Recruiter Profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/recruiter/profile"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Update Recruiter Profile",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"companyName\": \"Acme Corp\",\n  \"website\": \"https://acme.example\",\n  \"location\": \"Dhaka\",\n  \"bio\": \"Hiring top talent\",\n  \"contactEmail\": \"hr@acme.example\"\n}"
+            },
+            "url": "{{baseUrl}}/recruiter/profile"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Recruiter Stats",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/recruiter/stats"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        }
+      ]
     },
     {
-      "name": "Logout User",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{}" },
-        "url": { "raw": "{{base_url}}/api/v1/auth/logout", "host": ["{{base_url}}"], "path": ["api","v1","auth","logout"] }
-      }
+      "name": "Jobs",
+      "item": [
+        {
+          "name": "Search Jobs (public)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/jobs/search?keyword=engineer&location=Dhaka&page=1&limit=10"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Job Details",
+          "request": { "method": "GET", "url": "{{baseUrl}}/jobs/{{jobId}}" },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Create Job (recruiter)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Frontend Engineer\",\n  \"description\": \"Build UI\",\n  \"location\": \"Dhaka\",\n  \"jobType\": \"full-time\",\n  \"salaryMin\": 20000,\n  \"salaryMax\": 40000,\n  \"status\": \"active\"\n}"
+            },
+            "url": "{{baseUrl}}/jobs"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json(); if (json._id) pm.collectionVariables.set('jobId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Job (recruiter)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"title\": \"Senior Frontend Engineer\" }" },
+            "url": "{{baseUrl}}/jobs/{{jobId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Delete Job (recruiter)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": "{{baseUrl}}/jobs/{{jobId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Recruiter Jobs",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Applications",
+      "item": [
+        {
+          "name": "Submit Application",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"{{jobId}}\",\n  \"coverLetter\": \"I am a great fit\",\n  \"resumeUrl\": \"https://example.com/resume.pdf\"\n}"
+            },
+            "url": "{{baseUrl}}/applications"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json(); if (json._id) pm.collectionVariables.set('applicationId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Application",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/applications/{{applicationId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Update Application",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"notes\": \"Updated notes\", \"status\": \"reviewed\" }" },
+            "url": "{{baseUrl}}/applications/{{applicationId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Delete Application (withdraw)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": "{{baseUrl}}/applications/{{applicationId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get Job Applications (recruiter)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/applications/jobs/{{jobId}}/applications"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/users?page=1&limit=20"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 401', function () { pm.expect(pm.response.code).to.be.oneOf([200,401]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/users/{{userId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Suspend User",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/users/{{userId}}/suspend"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 401', function () { pm.expect(pm.response.code).to.be.oneOf([200,401]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Ban User",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/users/{{userId}}/ban"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 401', function () { pm.expect(pm.response.code).to.be.oneOf([200,401]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Activate User",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
+            "method": "POST",
+            "url": "{{baseUrl}}/admin/users/{{userId}}/activate"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 401', function () { pm.expect(pm.response.code).to.be.oneOf([200,401]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Platform Stats",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminAccessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/stats"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 401', function () { pm.expect(pm.response.code).to.be.oneOf([200,401]); });"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Create Payment (Stripe)",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 10.0,\n  \"currency\": \"usd\",\n  \"job_id\": \"{{jobId}}\",\n  \"description\": \"Promote job\"\n}"
+            },
+            "url": "{{baseUrl}}/payments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 or 200', function () { pm.expect(pm.response.code).to.be.oneOf([200,201]); });",
+                  "const json = pm.response.json(); if (json._id) pm.collectionVariables.set('paymentId', json._id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm Payment",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{ \"paymentId\": \"{{paymentId}}\" }" },
+            "url": "{{baseUrl}}/payments/{{paymentId}}/confirm"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 400', function () { pm.expect(pm.response.code).to.be.oneOf([200,400]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Payment History",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/payments/history?page=1&limit=10"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/notifications"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Unread Count",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "GET",
+            "url": "{{baseUrl}}/notifications/unread-count"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200', function () { pm.response.to.have.status(200); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Mark Notification Read",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "PUT",
+            "url": "{{baseUrl}}/notifications/{{notificationId}}/read"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        },
+        {
+          "name": "Delete Notification",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": "{{baseUrl}}/notifications/{{notificationId}}"
+          },
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('Status is 200 or 404', function () { pm.expect(pm.response.code).to.be.oneOf([200,404]); });"], "type": "text/javascript" } }]
+        }
+      ]
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://localhost:5000" },
-    { "key": "email", "value": "john@example.com" },
-    { "key": "password", "value": "Password123" }
+    { "key": "baseUrl", "value": "http://localhost:5000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "adminAccessToken", "value": "" },
+    { "key": "jobId", "value": "" },
+    { "key": "skillId", "value": "" },
+    { "key": "educationId", "value": "" },
+    { "key": "experienceId", "value": "" },
+    { "key": "applicationId", "value": "" },
+    { "key": "paymentId", "value": "" },
+    { "key": "notificationId", "value": "" },
+    { "key": "userId", "value": "" }
   ]
 }

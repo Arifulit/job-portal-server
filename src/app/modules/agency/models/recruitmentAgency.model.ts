@@ -1,5 +1,5 @@
 // src/models/recruitmentAgency.model.ts
-import { Schema, model } from "mongoose";
+import { Schema, model, models } from "mongoose";
 
 export interface IRecruitmentAgency {
   name: string;
@@ -18,7 +18,6 @@ const recruitmentAgencySchema = new Schema<IRecruitmentAgency>(
   { timestamps: true }
 );
 
-export const RecruitmentAgency = model<IRecruitmentAgency>(
-  "RecruitmentAgency",
-  recruitmentAgencySchema
-);
+export const RecruitmentAgency =
+  (models.RecruitmentAgency as ReturnType<typeof model<IRecruitmentAgency>>) ||
+  model<IRecruitmentAgency>("RecruitmentAgency", recruitmentAgencySchema);

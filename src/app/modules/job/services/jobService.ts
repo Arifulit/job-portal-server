@@ -34,11 +34,11 @@ export const getJobById = async (id: string) => {
 
 export const createJob = async (data: Omit<IJob, 'createdAt' | 'updatedAt'>) => {
   try {
-    // Set default status to pending for new jobs
+    // Default to pending unless caller explicitly sets approval state.
     const jobData = {
       ...data,
-      status: 'pending',
-      isApproved: false
+      status: data.status ?? 'pending',
+      isApproved: data.isApproved ?? false
     };
     return await Job.create(jobData);
   } catch (error) {
@@ -121,6 +121,10 @@ export const rejectJob = async (jobId: string, adminId: Types.ObjectId | string,
 
 export const closeJob = async (jobId: string, userId: Types.ObjectId | string, userRole?: string) => {
   try {
+    if (!userId) {
+      throw new Error('User ID is required to close job');
+    }
+
     const job = await Job.findById(jobId);
     
     if (!job) {
@@ -128,8 +132,9 @@ export const closeJob = async (jobId: string, userId: Types.ObjectId | string, u
     }
     
     // Convert both IDs to strings for comparison
-    const userIdStr = userId.toString();
-    const createdByIdStr = job.createdBy?.toString();
+    const userIdStr = typeof userId === 'string' ? userId : userId.toString();
+    const createdBySource = (job.createdBy as any)?._id ?? job.createdBy;
+    const createdByIdStr = createdBySource ? createdBySource.toString() : null;
     
     // Check if the user is the owner or admin
     const isOwner = createdByIdStr === userIdStr;

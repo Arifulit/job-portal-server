@@ -67,6 +67,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import session from "express-session";
 import router from "./app/routes";
+import { env } from "./app/config/env";
 import { errorHandler } from "./app/middleware/errorHandler";
 import notFound from "./app/middleware/notFound";
 
@@ -81,11 +82,11 @@ app.set("trust proxy", 1);
 // Session config
 app.use(
   session({
-    secret: process.env.EXPRESS_SESSION_SECRET ?? process.env.JWT_SECRET ?? "change_this_secret",
+    secret: process.env.EXPRESS_SESSION_SECRET ?? env.JWT_SECRET ?? "change_this_secret",
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: env.NODE_ENV === "production",
       httpOnly: true,
       sameSite: "lax",
       maxAge: 1000 * 60 * 60 * 24 * 7,
@@ -95,7 +96,7 @@ app.use(
 
 // Allowed origins
 const allowedOrigins = [
-  (process.env.FRONTEND_URL ?? "https://job-portal-client-jade-one.vercel.app").replace(/\/+$/, ""),
+  env.FRONTEND_URL.replace(/\/+$/, ""),
   "http://localhost:5173"
 ];
 
@@ -132,10 +133,22 @@ app.use(
 );
 
 // Routes
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).json({ success: true, message: "Job Portal API is healthy" });
+});
+
+app.get("/api/v1/health", (_req: Request, res: Response) => {
+  res.status(200).json({ success: true, message: "Job Portal API is healthy" });
+});
+
 app.use("/api/v1", router);
 
-app.get("/", (req: Request, res: Response) => {
-  res.status(200).json({ message: "Welcome to the Job Portal API" });
+app.get("/", (_req: Request, res: Response) => {
+  res.status(200).json({
+    success: true,
+    message: "Welcome to the Job Portal API",
+    docs: "/api/v1/health",
+  });
 });
 
 app.use(notFound);

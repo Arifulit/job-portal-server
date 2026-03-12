@@ -3,8 +3,14 @@ import { SystemAnnouncement } from "../models/SystemAnnouncement";
 // Replace `any` with the proper DTO shape or re-export AnnouncementDTO from ../dto/index.ts when available.
 type AnnouncementDTO = any;
 
-export const createAnnouncement = async (data: AnnouncementDTO) => {
-  return await SystemAnnouncement.create(data);
+export const createAnnouncement = async (data: AnnouncementDTO, createdBy: string) => {
+  const payload = {
+    ...data,
+    message: data?.message ?? data?.content,
+    createdBy,
+  };
+
+  return await SystemAnnouncement.create(payload);
 };
 
 export const getAnnouncements = async () => {

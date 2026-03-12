@@ -25,16 +25,35 @@ export interface ICompany {
   name: string;
   industry?: string;
   size?: string;
+  yearOfEstablishment?: number;
+  address?: string;
+  location?: string;
   website?: string;
+  logo?: string;
+  email?: string;
+  phone?: string;
+  verified?: boolean;
   description?: string;
+  isVerified?: boolean;
+  verifiedAt?: Date | null;
+  verifiedBy?: Schema.Types.ObjectId | null;
 }
 
 const companySchema = new Schema<ICompany>({
   name: { type: String, required: true, unique: true },
   industry: { type: String },
   size: { type: String },
+  yearOfEstablishment: { type: Number },
+  address: { type: String },
+  location: { type: String },
   website: { type: String },
-  description: { type: String }
+  logo: { type: String },
+  email: { type: String, trim: true, lowercase: true, unique: true, sparse: true },
+  phone: { type: String },
+  description: { type: String },
+  isVerified: { type: Boolean, default: false },
+  verifiedAt: { type: Date, default: null },
+  verifiedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null }
 }, { timestamps: true });
 
 // Guarded model creation to avoid OverwriteModelError

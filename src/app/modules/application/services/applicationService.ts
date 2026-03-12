@@ -1,5 +1,6 @@
 import { Application, IApplication } from "../models/Application";
 import { Job } from "../../job/models/Job";
+import { Types } from "mongoose";
 
 export const applyJob = async (data: IApplication) => {
   const existing = await Application.findOne({ candidate: data.candidate, job: data.job });
@@ -19,7 +20,20 @@ export const getApplicationsByCandidate = async (candidateId: string) => {
 };
 
 export const getApplicationsByJob = async (jobId: string) => {
-  return await Application.find({ job: jobId })
+  const query: any = { job: jobId };
+
+  // Support ObjectId storage and legacy records that may have used `jobId`.
+  if (Types.ObjectId.isValid(jobId)) {
+    const objectId = new Types.ObjectId(jobId);
+    query.$or = [
+      { job: objectId },
+      { job: jobId },
+      { jobId: objectId },
+      { jobId }
+    ];
+  }
+
+  return await Application.find(query)
     .populate("candidate", "name email")
     .sort({ createdAt: -1 });
 };

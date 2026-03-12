@@ -11,7 +11,9 @@ import {
   getAllUsersFromDBController,
   suspendUserController,
   impersonateUserController,
-  updateUserRoleController
+  updateUserRoleController,
+  setRecruiterApprovalController,
+  getModerationOverviewController
 } from "../controllers/userController";
 
 const router = Router();
@@ -27,6 +29,9 @@ router.get("/candidates", authMiddleware(["admin"]), getAllCandidatesController 
 
 // Get all recruiters
 router.get("/recruiters", authMiddleware(["admin"]), getAllRecruitersController as any);
+
+// Moderation overview for admin dashboard
+router.get("/moderation-overview", authMiddleware(["admin"]), getModerationOverviewController as any);
 
 // Suspend/Unsuspend a user
 router.put("/:userId/suspend", authMiddleware(["admin"]), suspendUserController as any);
@@ -52,6 +57,13 @@ router.put(
   authMiddleware(["admin"]),
   // Role update controller
   updateUserRoleController
+);
+
+// Approve or revoke recruiter approval status
+router.put(
+  "/:userId/recruiter-approval",
+  authMiddleware(["admin"]),
+  setRecruiterApprovalController as any
 );
 
 export default router;

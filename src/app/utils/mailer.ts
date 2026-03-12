@@ -1,29 +1,54 @@
 import nodemailer from "nodemailer";
 import { getVerificationEmail } from "../templates/verificationEmail";
 
+const smtpHost = process.env.SMTP_HOST;
+const smtpPort = Number(process.env.SMTP_PORT || 587);
+const smtpUser = process.env.SMTP_USER;
+const smtpPass = process.env.SMTP_PASS;
+
+const isPlaceholderValue = (value?: string) =>
+  !value ||
+  value.includes("your_") ||
+  value.includes("example.com") ||
+  value.includes("app_password");
+
+const isSmtpConfigured =
+  !isPlaceholderValue(smtpHost) &&
+  !isPlaceholderValue(smtpUser) &&
+  !isPlaceholderValue(smtpPass);
+
 // Create reusable transporter object using the default SMTP transport
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+  host: smtpHost,
+  port: smtpPort,
+  // If SMTP_SECURE is not set, infer from port. Port 465 requires secure=true.
+  secure: process.env.SMTP_SECURE
+    ? process.env.SMTP_SECURE === "true"
+    : smtpPort === 465,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
+    user: smtpUser,
+    pass: smtpPass
   },
   // For development with self-signed certificates
   tls: {
-    rejectUnauthorized: process.env.NODE_ENV === 'production'
+    rejectUnauthorized: process.env.NODE_ENV === "production"
   }
 });
 
 // Verify connection configuration
-transporter.verify(function (error) {
-  if (error) {
-    console.error('Error connecting to email server:', error);
-  } else {
-    console.log('Server is ready to take our messages');
-  }
-});
+if (isSmtpConfigured) {
+  transporter.verify((error) => {
+    if (error) {
+      console.error("Error connecting to email server:", error);
+    } else {
+      console.log("Email server is ready to take messages");
+    }
+  });
+} else {
+  console.warn(
+    "SMTP is not fully configured. Email sending is disabled until SMTP_HOST/SMTP_USER/SMTP_PASS are set."
+  );
+}
 
 interface MailOptions {
   to: string;
@@ -41,8 +66,14 @@ export const sendEmail = async ({
   subject, 
   text, 
   html,
-  from = process.env.SMTP_FROM || 'noreply@yourdomain.com'
+  from = process.env.SMTP_FROM || "noreply@yourdomain.com"
 }: MailOptions) => {
+  if (!isSmtpConfigured) {
+    throw new Error(
+      "SMTP is not configured. Set SMTP_HOST, SMTP_USER and SMTP_PASS with valid values."
+    );
+  }
+
   try {
     const info = await transporter.sendMail({
       from: `"${process.env.APP_NAME || 'Your App'}" <${from}>`,
@@ -52,11 +83,11 @@ export const sendEmail = async ({
       html
     });
     
-    console.log('Message sent: %s', info.messageId);
+    console.log("Message sent: %s", info.messageId);
     return info;
   } catch (error) {
-    console.error('Error sending email:', error);
-    throw new Error('Failed to send email');
+    console.error("Error sending email:", error);
+    throw new Error("Failed to send email");
   }
 };
 

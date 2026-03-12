@@ -20,15 +20,9 @@ router.use((req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-// IMPORTANT: Define specific routes BEFORE router.use() for sub-routes
-// Handle the /profile route
-router.route("/profile")
-  // GET /api/v1/candidate/profile - Get current user's candidate profile
-  .get(optionalAuth, asyncHandler(getCurrentCandidateProfileController))
-  // POST /api/v1/candidate/profile - Create candidate profile
-  .post(authMiddleware(["Candidate"]), asyncHandler(createCandidateProfileController))
-  // PUT /api/v1/candidate/profile - Update current user's candidate profile
-  .put(authMiddleware(["Candidate"]), asyncHandler(updateCurrentCandidateProfileController));
+// Mount profile sub-routes at /profile path
+// This makes: GET /api/v1/candidate/profile, POST /api/v1/candidate/profile, GET /api/v1/candidate/profile/:userId, etc.
+router.use("/profile", candidateProfileRoutes);
 
 // Mount sub-routes
 router.use("/resume", resumeRoutes);

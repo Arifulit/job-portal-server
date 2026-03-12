@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Message from '../models/Message';
 import { Types } from 'mongoose';
+import { User } from '../../auth/models/User';
+import { emitToUser } from '../../../integrations/socket';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -59,20 +61,73 @@ export const getMessages = async (req: AuthenticatedRequest, res: Response) => {
 
 export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { recipient, content, conversationId } = req.body;
+    const recipient = req.body.recipient || req.body.receiverId;
+    const { content } = req.body;
+    const providedConversationId = req.body.conversationId;
     const sender = req.user?.id;
 
-    if (!recipient || !content || !conversationId) {
+    if (!sender || !recipient || !content) {
       return res.status(400).json({
         success: false,
-        message: 'Recipient, content, and conversation ID are required'
+        message: 'Sender, recipient (or receiverId), and content are required'
+      });
+    }
+
+    if (!Types.ObjectId.isValid(sender) || !Types.ObjectId.isValid(recipient)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid sender or recipient ID'
+      });
+    }
+
+    if (String(sender) === String(recipient)) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot send message to yourself'
+      });
+    }
+
+    const [senderUser, recipientUser] = await Promise.all([
+      User.findById(sender).select('role').lean(),
+      User.findById(recipient).select('role').lean(),
+    ]);
+
+    if (!senderUser || !recipientUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sender or recipient not found'
+      });
+    }
+
+    const allowedRoles = new Set(['candidate', 'recruiter']);
+    if (!allowedRoles.has(senderUser.role) || !allowedRoles.has(recipientUser.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only recruiter-candidate chat is allowed'
+      });
+    }
+
+    if (senderUser.role === recipientUser.role) {
+      return res.status(403).json({
+        success: false,
+        message: 'Chat is allowed between recruiter and candidate only'
+      });
+    }
+
+    const conversationId = providedConversationId || [String(sender), String(recipient)].sort().join(':');
+
+    const normalizedContent = String(content).trim();
+    if (!normalizedContent) {
+      return res.status(400).json({
+        success: false,
+        message: 'Message content cannot be empty'
       });
     }
 
     const message = new Message({
       sender,
       recipient,
-      content,
+      content: normalizedContent,
       conversationId
     });
 
@@ -81,6 +136,10 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
     const populatedMessage = await Message.findById(message._id)
       .populate('sender', 'name email avatar')
       .populate('recipient', 'name email avatar');
+
+    // Emit realtime message to both sender and recipient sockets.
+    emitToUser(String(sender), 'chat:new_message', populatedMessage);
+    emitToUser(String(recipient), 'chat:new_message', populatedMessage);
 
     return res.status(201).json({
       success: true,

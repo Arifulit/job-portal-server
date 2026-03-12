@@ -8,6 +8,9 @@ export interface IUser extends Document {
   email: string;
   password: string;
   role: 'candidate' | 'recruiter' | 'admin';
+  isRecruiterApproved?: boolean;
+  recruiterApprovedAt?: Date;
+  recruiterApprovedBy?: mongoose.Types.ObjectId;
   isEmailVerified: boolean;
   isSuspended?: boolean;
   refreshToken?: string;
@@ -38,6 +41,16 @@ const userSchema = new Schema<IUser>(
       enum: ['candidate', 'recruiter', 'admin'],
       default: 'candidate',
     },
+    isRecruiterApproved: {
+      type: Boolean,
+    },
+    recruiterApprovedAt: {
+      type: Date,
+    },
+    recruiterApprovedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
     isEmailVerified: {
       type: Boolean,
       default: false,
@@ -57,6 +70,15 @@ const userSchema = new Schema<IUser>(
 
 // Password hash করার জন্য pre-save middleware
 userSchema.pre('save', async function (next) {
+  // Keep recruiter approval fields only on recruiter documents.
+  if (this.role !== 'recruiter') {
+    this.set('isRecruiterApproved', undefined);
+    this.set('recruiterApprovedAt', undefined);
+    this.set('recruiterApprovedBy', undefined);
+  } else if (typeof this.isRecruiterApproved === 'undefined') {
+    this.isRecruiterApproved = false;
+  }
+
   // শুধুমাত্র যখন password পরিবর্তিত হয় তখনই hash করা হবে
   if (!this.isModified('password')) {
     return next();

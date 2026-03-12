@@ -1,5 +1,44 @@
 import { Request, Response } from "express";
+import fs from "fs";
+import cloudinary from "../../../../config/cloudinary";
 import * as resumeService from "../services/resumeService";
+
+function buildSignedCloudinaryUrlFromPublicId(publicId: string): string {
+  return cloudinary.url(publicId, {
+    secure: true,
+    resource_type: "raw",
+    type: "upload",
+    sign_url: true,
+  });
+}
+
+function parseCloudinaryPublicIdAndFormat(fileUrl: string): { publicId: string; format?: string } | null {
+  try {
+    const marker = "/raw/upload/";
+    const idx = fileUrl.indexOf(marker);
+    if (idx === -1) return null;
+
+    const afterMarker = fileUrl.slice(idx + marker.length);
+    const withoutVersion = afterMarker.replace(/^v\d+\//, "");
+    const cleanPath = withoutVersion.split("?")[0];
+
+    const extMatch = cleanPath.match(/\.([a-zA-Z0-9]+)$/);
+    if (extMatch) {
+      const format = extMatch[1].toLowerCase();
+      const publicId = cleanPath.replace(/\.[a-zA-Z0-9]+$/, "");
+      return { publicId, format };
+    }
+
+    return { publicId: cleanPath };
+  } catch {
+    return null;
+  }
+}
+
+function fixMalformedCloudinaryPdfUrl(fileUrl: string): string {
+  // Repair accidentally generated links like ...resume_123.pdf.pdf
+  return fileUrl.replace(/\.pdf\.pdf(\?|$)/i, ".pdf$1");
+}
 
 export const uploadResumeController = async (req: Request, res: Response) => {
   try {
@@ -30,18 +69,27 @@ export const uploadResumeController = async (req: Request, res: Response) => {
     // Check if file was uploaded via form-data (multer)
     const uploadedFile = (req as any).file;
     if (uploadedFile) {
-      // File was uploaded via multer
-      console.log("🟦 File uploaded via multer:", uploadedFile);
-      
-      // Construct file URL - adjust based on your server setup
-      // Option 1: Local file path (if serving static files)
-      fileUrl = `/uploads/${uploadedFile.filename}`;
-      // Option 2: Full URL (if you have a base URL)
-      // fileUrl = `${process.env.BASE_URL || 'http://localhost:5000'}/uploads/${uploadedFile.filename}`;
-      
+      // File was uploaded via multer — now push to Cloudinary
+      console.log("🟦 File uploaded via multer, uploading to Cloudinary:", uploadedFile.path);
+
+      const cloudResult = await cloudinary.uploader.upload(uploadedFile.path, {
+        folder: "resumes",
+        resource_type: "raw",
+        type: "upload",
+        access_mode: "public",
+        public_id: `resume_${req.user!.id}_${Date.now()}`,
+        overwrite: true,
+      });
+
+      // Remove temp file from disk after successful upload
+      fs.unlink(uploadedFile.path, (err) => {
+        if (err) console.warn("⚠️ Could not delete temp file:", uploadedFile.path);
+      });
+
+      fileUrl = buildSignedCloudinaryUrlFromPublicId(cloudResult.public_id);
       fileName = uploadedFile.originalname || uploadedFile.filename;
-      
-      console.log("🟦 Generated fileUrl:", fileUrl);
+
+      console.log("🟦 Cloudinary URL:", fileUrl);
       console.log("🟦 Generated fileName:", fileName);
     } else {
       // Check if fileUrl and fileName are in request body (JSON request)
@@ -158,8 +206,19 @@ export const getCurrentResumeController = async (req: Request, res: Response) =>
           message: "Resume not found. Please upload your resume first." 
         });
       }
+
+      // Normalize old Cloudinary URLs to signed browser-openable URL.
+      const resumeObj: any = (resume as any).toObject ? (resume as any).toObject() : resume;
+      if (typeof resumeObj.fileUrl === "string" && resumeObj.fileUrl.includes("res.cloudinary.com")) {
+        resumeObj.fileUrl = fixMalformedCloudinaryPdfUrl(resumeObj.fileUrl);
+        const parsed = parseCloudinaryPublicIdAndFormat(resumeObj.fileUrl);
+        if (parsed?.publicId) {
+          resumeObj.fileUrl = buildSignedCloudinaryUrlFromPublicId(parsed.publicId);
+        }
+      }
+
       console.log("✅ Controller: Resume retrieved successfully");
-      return res.status(200).json({ success: true, data: resume });
+      return res.status(200).json({ success: true, data: resumeObj });
     }
     
     // If not authenticated, return helpful error message
@@ -191,9 +250,19 @@ export const getResumeController = async (req: Request, res: Response) => {
         message: "Resume not found" 
       });
     }
+
+    // Normalize old Cloudinary URLs to signed browser-openable URL.
+    const resumeObj: any = (resume as any).toObject ? (resume as any).toObject() : resume;
+    if (typeof resumeObj.fileUrl === "string" && resumeObj.fileUrl.includes("res.cloudinary.com")) {
+      resumeObj.fileUrl = fixMalformedCloudinaryPdfUrl(resumeObj.fileUrl);
+      const parsed = parseCloudinaryPublicIdAndFormat(resumeObj.fileUrl);
+      if (parsed?.publicId) {
+        resumeObj.fileUrl = buildSignedCloudinaryUrlFromPublicId(parsed.publicId);
+      }
+    }
     
     console.log("✅ Controller: Resume retrieved successfully");
-    res.status(200).json({ success: true, data: resume });
+    res.status(200).json({ success: true, data: resumeObj });
   } catch (error: any) {
     console.error("❌ Controller Error (get resume):", error.message);
     res.status(500).json({ 

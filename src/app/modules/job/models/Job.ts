@@ -14,7 +14,13 @@ export interface IJobUpdateData {
   location?: string;
   jobType?: string;
   salary?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  currency?: string;
+  experience?: string;
   experienceLevel?: string;
+  deadline?: Date;
+  vacancies?: number;
   skills?: string[];
   status?: 'pending' | 'approved' | 'rejected' | 'closed';
   rejectionReason?: string;
@@ -34,7 +40,13 @@ export interface IJob extends Document {
   location: string;
   jobType: string;
   salary?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  currency?: string;
+  experience?: string;
   experienceLevel?: string;
+  deadline?: Date;
+  vacancies?: number;
   skills: string[];
   createdBy: Schema.Types.ObjectId;
   company: Schema.Types.ObjectId; 
@@ -63,11 +75,17 @@ const jobSchema = new Schema<IJob>({
     required: true 
   },
   salary: { type: Number },
+  salaryMin: { type: Number },
+  salaryMax: { type: Number },
+  currency: { type: String, default: "BDT" },
+  experience: { type: String },
   experienceLevel: { 
     type: String, 
     enum: ['entry', 'mid-level', 'senior', 'lead', 'executive'],
     required: true 
   },
+  deadline: { type: Date },
+  vacancies: { type: Number, min: 1, default: 1 },
   skills: [{ type: String }],
   createdBy: { 
     type: Schema.Types.ObjectId, 

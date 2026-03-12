@@ -25,7 +25,7 @@ export const approveJob: AuthenticatedHandler = async (req, res, next) => {
       });
     }
 
-    const job = await jobService.approveJob(jobId, req.user._id);
+    const job = await jobService.approveJob(jobId, req.user.id);
 
     return res.status(200).json({
       success: true,
@@ -64,7 +64,7 @@ export const rejectJob: AuthenticatedHandler = async (req, res, next) => {
       });
     }
 
-    const job = await jobService.rejectJob(jobId, req.user._id, reason);
+    const job = await jobService.rejectJob(jobId, req.user.id, reason);
 
     return res.status(200).json({
       success: true,
@@ -96,7 +96,7 @@ export const closeJob: AuthenticatedHandler = async (req, res, next) => {
       });
     }
 
-    const job = await jobService.closeJob(jobId, req.user._id);
+    const job = await jobService.closeJob(jobId, req.user.id, req.user.role);
 
     return res.status(200).json({
       success: true,

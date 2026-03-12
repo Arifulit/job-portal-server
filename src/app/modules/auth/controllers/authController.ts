@@ -1,19 +1,61 @@
 
 import { Request, Response } from "express";
+import { Types } from "mongoose";
 import * as authService from "../services/authService";
 import { User } from "../models/User";
 import { CandidateProfile } from "../../profile/candidate/models/CandidateProfile";
 import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfile";
 import { AdminProfile } from "../../profile/admin/models/AdminProfile";
+import { RecruitmentAgency } from "../../agency/models/recruitmentAgency.model";
+import Company from "../../company/models/Company";
 
 const ACCESS_TTL = "24h";
 const REFRESH_TTL = "30d";
 const REFRESH_COOKIE_NAME = "refreshToken";
 const REFRESH_COOKIE_MAXAGE = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
 
+const toAuthUserPayload = (user: any) => {
+  const base = {
+    _id: user._id,
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isEmailVerified: user.isEmailVerified,
+    isSuspended: user.isSuspended,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
+
+  if (user.role === "recruiter") {
+    return {
+      ...base,
+      isRecruiterApproved: user.isRecruiterApproved ?? false,
+      recruiterApprovedAt: user.recruiterApprovedAt ?? null,
+      recruiterApprovedBy: user.recruiterApprovedBy ?? null,
+    };
+  }
+
+  return base;
+};
+
 export const register = async (req: Request, res: Response) => {
   try {
-    const { name, email, password, role, phone, designation, agency, skills } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      phone,
+      designation,
+      agency,
+      companyName,
+      yearOfEstablishment,
+      companyAddress,
+      industryType,
+      websiteUrl,
+      skills
+    } = req.body;
 
     // Required field validation
     if (!name || !email || !password) {
@@ -25,6 +67,10 @@ export const register = async (req: Request, res: Response) => {
 
     // Create user
     const user = await authService.registerUser(name, email, password, role as any);
+
+    if (role === 'recruiter') {
+      (user as any).isRecruiterApproved = false;
+    }
 
     // Create corresponding profile based on role
     const userId = user._id.toString();
@@ -45,21 +91,58 @@ export const register = async (req: Request, res: Response) => {
         });
         break;
 
-      case "recruiter":
-        if (!phone || !designation || !agency) {
+      case "recruiter": {
+        if (!phone || !designation || !companyName || !yearOfEstablishment || !companyAddress || !industryType || !websiteUrl) {
           return res.status(400).json({
             success: false,
-            message: "Phone, designation, and agency are required for recruiter registration"
+            message: "Phone, designation, companyName, yearOfEstablishment, companyAddress, industryType and websiteUrl are required for recruiter registration"
           });
         }
+
+        const normalizedCompanyName = String(companyName).trim();
+        const companyDoc = await Company.findOneAndUpdate(
+          { name: { $regex: `^${normalizedCompanyName}$`, $options: "i" } },
+          {
+            $set: {
+              industry: String(industryType).trim(),
+              website: String(websiteUrl).trim(),
+              address: String(companyAddress).trim(),
+              yearOfEstablishment: Number(yearOfEstablishment)
+            },
+            $setOnInsert: {
+              name: normalizedCompanyName,
+              isVerified: false
+            }
+          },
+          { new: true, upsert: true }
+        );
+
+        let agencyId = agency;
+        if (!agencyId || !Types.ObjectId.isValid(agencyId)) {
+          let agencyDoc = await RecruitmentAgency.findOne({
+            name: { $regex: `^${normalizedCompanyName}$`, $options: "i" },
+          });
+
+          if (!agencyDoc) {
+            agencyDoc = await RecruitmentAgency.create({
+              name: normalizedCompanyName,
+              website: String(websiteUrl).trim(),
+              industry: String(industryType).trim()
+            });
+          }
+
+          agencyId = agencyDoc._id;
+        }
+
         await RecruiterProfile.create({
           user: userId,
-          name,
           phone,
           designation,
-          agency
+          agency: agencyId,
+          company: companyDoc._id
         });
         break;
+      }
 
       case "admin":
         if (!phone) {
@@ -98,8 +181,11 @@ export const register = async (req: Request, res: Response) => {
 
     res.status(201).json({
       success: true,
+      message: role === 'recruiter'
+        ? 'Recruiter registered successfully. Waiting for admin approval.'
+        : 'Registration successful',
       data: {
-        user,
+        user: toAuthUserPayload(user),
         accessToken,
         refreshToken
       }
@@ -147,7 +233,7 @@ export const login = async (req: Request, res: Response) => {
     res.status(200).json({
       success: true,
       data: {
-        user,
+        user: toAuthUserPayload(user),
         accessToken,
         refreshToken
       }
@@ -214,7 +300,7 @@ export const refresh = async (req: Request, res: Response) => {
       }
     });
 
-  } catch (error: any) {
+  } catch (_error: any) {
     res.status(401).json({
       success: false,
       message: "Invalid refresh token"
@@ -236,7 +322,7 @@ export const logout = async (req: Request, res: Response) => {
       message: "Successfully logged out"
     });
 
-  } catch (error: any) {
+  } catch (_error: any) {
     res.status(500).json({
       success: false,
       message: "Logout failed"
@@ -299,6 +385,13 @@ export const me = async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      ...(user.role === "recruiter"
+        ? {
+            isRecruiterApproved: (user as any).isRecruiterApproved ?? false,
+            recruiterApprovedAt: (user as any).recruiterApprovedAt ?? null,
+            recruiterApprovedBy: (user as any).recruiterApprovedBy ?? null,
+          }
+        : {}),
       profile
     };
 

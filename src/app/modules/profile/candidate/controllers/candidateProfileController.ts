@@ -1,26 +1,52 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
 import * as candidateProfileService from "../services/candidateProfileService";
+import { CandidateProfile } from "../models/CandidateProfile";
 
 export const createCandidateProfileController = async (req: Request, res: Response) => {
   try {
-    console.log("🟦 Controller: Creating profile");
+    console.log("🟦 Controller: Creating/Updating profile");
+    console.log("🟦 Request user:", req.user);
     console.log("🟦 Request body:", req.body);
     
-    const profile = await candidateProfileService.createCandidateProfile(req.body);
+    // Check if user is authenticated
+    if (!req.user?.id) {
+      console.log("⚠️ Controller: No user authenticated");
+      return res.status(401).json({ 
+        success: false, 
+        message: "Authentication required. Please log in to create a profile."
+      });
+    }
+
+    const userId = req.user.id;
+    console.log("🟦 User authenticated, userId:", userId);
     
-    console.log("✅ Controller: Profile created successfully");
+    // Prepare profile data with authenticated user ID
+    const profileData = {
+      user: userId,
+      name: req.body.name || "",
+      phone: req.body.phone || "",
+      address: req.body.address || "",
+      email: req.user.email || "",
+      skills: req.body.skills || [],
+      bio: req.body.bio,
+      experience: req.body.experience,
+      education: req.body.education,
+      resume: req.body.resume,
+      ...req.body // Spread any other valid fields from the request
+    };
+    
+    // Use findOneAndUpdate with upsert: true to create or update
+    const profile = await CandidateProfile.findOneAndUpdate(
+      { user: userId },
+      profileData,
+      { new: true, upsert: true, runValidators: true }
+    ).populate("resume").lean();
+    
+    console.log("✅ Controller: Profile created/updated successfully");
     res.status(201).json({ success: true, data: profile });
   } catch (error: any) {
     console.error("❌ Controller Error (create):", error.message);
-    
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "Profile already exists for this user"
-      });
-    }
     
     // Handle validation errors
     if (error.name === "ValidationError") {

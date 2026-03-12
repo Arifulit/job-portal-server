@@ -214,6 +214,34 @@ export const updateUserRoleController = async (req: Request, res: Response) => {
   }
 };
 
+export const setRecruiterApprovalController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { approved = true } = req.body || {};
+
+    const adminId = (req.user as any)?._id?.toString() || (req.user as any)?.id?.toString();
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin authentication required'
+      });
+    }
+
+    const result = await userService.setRecruiterApproval(adminId, userId, Boolean(approved));
+    return res.status(200).json(result);
+  } catch (error: any) {
+    let statusCode = 500;
+    if (error.message?.includes('User not found')) statusCode = 404;
+    if (error.message?.includes('Only admin')) statusCode = 403;
+    if (error.message?.includes('not a recruiter')) statusCode = 400;
+
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Failed to update recruiter approval status'
+    });
+  }
+};
+
 export const getAllRecruitersController = async (req: Request, res: Response) => {
   try {
     const recruiters = await userService.getAllRecruiters();
@@ -235,6 +263,23 @@ export const getAllRecruitersController = async (req: Request, res: Response) =>
         code: "RECRUITER_FETCH_ERROR",
         description: "An error occurred while fetching recruiters"
       }
+    });
+  }
+};
+
+export const getModerationOverviewController = async (req: Request, res: Response) => {
+  try {
+    const data = await userService.getModerationOverview();
+    return res.status(200).json({
+      success: true,
+      message: 'Admin moderation overview retrieved successfully',
+      data
+    });
+  } catch (error: any) {
+    console.error('Error in getModerationOverviewController:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to load moderation overview'
     });
   }
 };

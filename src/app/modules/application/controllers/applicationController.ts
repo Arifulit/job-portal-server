@@ -3,6 +3,7 @@ import * as applicationService from "../services/applicationService";
 import { Job } from "../../job/models/Job";
 import { Application } from "../models/Application";
 import { Types, Document } from "mongoose";
+import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfile";
 
 type UserRole = 'admin' | 'recruiter' | 'candidate' | 'employer' | 'user';
 
@@ -15,6 +16,44 @@ interface JobWithCreatedBy extends Document {
   };
   [key: string]: any;
 }
+
+const toIdString = (value: any): string | null => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value instanceof Types.ObjectId) return value.toString();
+  if (typeof value === 'object') {
+    if (value._id) {
+      return toIdString(value._id);
+    }
+    if (typeof value.toString === 'function' && value.toString() !== '[object Object]') {
+      return value.toString();
+    }
+  }
+  return null;
+};
+
+const resolveRecruiterOrgId = async (user: any): Promise<string | null> => {
+  const directOrgId =
+    toIdString(user?.company) ||
+    toIdString(user?.companyId) ||
+    toIdString(user?.agency) ||
+    toIdString(user?.agencyId);
+
+  if (directOrgId) {
+    return directOrgId;
+  }
+
+  const authUserId = toIdString(user?._id) || toIdString(user?.id);
+  if (!authUserId) {
+    return null;
+  }
+
+  const recruiterProfile = await RecruiterProfile.findOne({ user: authUserId })
+    .select("company agency")
+    .lean();
+
+  return toIdString((recruiterProfile as any)?.company) || toIdString((recruiterProfile as any)?.agency);
+};
 
 // Use the centralized UserRole type from the main types file
 export type AuthenticatedRequest = Request & {
@@ -93,12 +132,23 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
     const { status } = req.body;
     const userRole = req.user.role;
 
-    // Validate status
-    const validStatuses = ['Applied', 'Shortlisted', 'Interview', 'Hired', 'Rejected'];
-    if (status && !validStatuses.includes(status)) {
+    // Validate and normalize status (accept case-insensitive input)
+    const statusMap: Record<string, 'Applied' | 'Shortlisted' | 'Interview' | 'Hired' | 'Rejected'> = {
+      applied: 'Applied',
+      shortlisted: 'Shortlisted',
+      interview: 'Interview',
+      hired: 'Hired',
+      rejected: 'Rejected'
+    };
+    const normalizedStatus =
+      typeof status === 'string' && status.trim().length > 0
+        ? statusMap[status.trim().toLowerCase()]
+        : undefined;
+
+    if (status && !normalizedStatus) {
       return res.status(400).json({
         success: false,
-        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`
+        message: 'Invalid status. Must be one of: Applied, Shortlisted, Interview, Hired, Rejected'
       });
     }
 
@@ -106,7 +156,7 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
     const application = await Application.findById(id)
       .populate({
         path: 'job',
-        select: 'createdBy',
+        select: 'createdBy company',
         // Make sure to include the reference to the job
         options: { lean: true }
       });
@@ -126,19 +176,22 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
       });
     }
 
-    // For recruiters, verify they created the job
+    // Recruiters can only update applications for jobs belonging to their own organization.
     if (userRole === 'recruiter') {
       const job = application.job as any;
-      if (!job.createdBy || job.createdBy.toString() !== req.user.id) {
+      const jobCompanyId = toIdString(job?.company);
+      const recruiterOrgId = await resolveRecruiterOrgId(req.user as any);
+
+      if (!jobCompanyId || !recruiterOrgId || jobCompanyId !== recruiterOrgId) {
         return res.status(403).json({
           success: false,
-          message: 'Not authorized to update this application'
+          message: 'You can only update applications for jobs from your company'
         });
       }
     }
 
     // Update the application status
-    application.status = status || application.status;
+    application.status = normalizedStatus || application.status;
     await application.save();
 
     // Populate the response with necessary data
@@ -195,8 +248,15 @@ export const getJobApplications = async (req: AuthenticatedRequest, res: Respons
 
     const { jobId } = req.params;
     const { status } = req.query as { status?: string };
-    const userId = req.user.id;
+    const userId = req.user.id || (req.user as any)?._id?.toString();
     const userRole = req.user.role;
+
+    if (!jobId || !Types.ObjectId.isValid(jobId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid job ID format'
+      });
+    }
 
     if (!userId || !userRole) {
       return res.status(401).json({ 
@@ -216,9 +276,10 @@ export const getJobApplications = async (req: AuthenticatedRequest, res: Respons
 
     // Admin can view all applications
     if (userRole === 'admin') {
-      const applications = await Application.find({ job: jobId })
-        .populate('candidate', 'name email')
-        .sort({ appliedAt: -1 });
+      let applications = await applicationService.getApplicationsByJob(jobId);
+      if (status) {
+        applications = applications.filter((app: any) => app.status === status);
+      }
       
       return res.status(200).json({ 
         success: true, 
@@ -236,14 +297,10 @@ export const getJobApplications = async (req: AuthenticatedRequest, res: Respons
       console.log('Bypassing creator check for testing');
     
 
-      const query: any = { job: new Types.ObjectId(jobId) };
+      let applications = await applicationService.getApplicationsByJob(jobId);
       if (status) {
-        query.status = status;
+        applications = applications.filter((app: any) => app.status === status);
       }
-
-      const applications = await Application.find(query)
-        .populate('candidate', 'name email')
-        .sort({ appliedAt: -1 });
 
       return res.status(200).json({ 
         success: true, 
@@ -284,8 +341,15 @@ export const getJobApplicationsNew = async (req: AuthenticatedRequest, res: Resp
       });
     }
 
-    const userId = req.user.id;
+    const userId = toIdString((req.user as any)?._id) || toIdString(req.user.id);
     const userRole = req.user.role;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required'
+      });
+    }
 
     console.log('Request User:', { userId, userRole });
     console.log('Job ID:', jobId);
@@ -316,7 +380,7 @@ export const getJobApplicationsNew = async (req: AuthenticatedRequest, res: Resp
 
     // For recruiter, check if they created the job
     if (userRole === 'recruiter') {
-      const jobCreatorId = job.createdBy?.toString();
+      const jobCreatorId = toIdString((job as any).createdBy);
       console.log('Comparing IDs - Creator:', jobCreatorId, 'User:', userId);
       
       if (!jobCreatorId || jobCreatorId !== userId) {

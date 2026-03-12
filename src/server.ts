@@ -1,16 +1,18 @@
 /* eslint-disable no-console */
 import "dotenv/config";
-import { Server } from "http";
+import { createServer, Server } from "http";
 import mongoose from "mongoose";
+import { env } from "./app/config/env";
 import app from "./app";
+import { initSocketServer } from "./app/integrations/socket";
 
 let server: Server | undefined;
 
 const startServer = async () => {
   try {
-    const dbUrl = process.env.DB_URL;
+    const dbUrl = env.DB_URL;
     if (!dbUrl) {
-      throw new Error("Database URL not provided. Set DB_URL in environment or .env");
+      throw new Error("Database URL not provided. Set DB_URL, DB_URI, or MONGODB_URI in environment or .env");
     }
 
     await mongoose.connect(dbUrl, {
@@ -19,11 +21,16 @@ const startServer = async () => {
       // useUnifiedTopology: true,
     } as mongoose.ConnectOptions);
 
-    console.log("Connected to MongoDB:", dbUrl);
+    console.log("Connected to MongoDB successfully");
 
-    const port = Number(process.env.PORT ?? 5000);
-    server = app.listen(port, () => {
+    // Create a raw HTTP server so Socket.IO can share the same port
+    const httpServer = createServer(app);
+    initSocketServer(httpServer);
+
+    const port = env.PORT;
+    server = httpServer.listen(port, () => {
       console.log(`Server is listening on port ${port}`);
+      console.log(`Socket.IO is ready on ws://localhost:${port}`);
     });
   } catch (error) {
     console.error("Failed to start server:", error);
