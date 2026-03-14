@@ -1,12 +1,31 @@
 import { Schema, model, Types } from "mongoose";
 
+interface ICandidateExperienceItem {
+  company: string;
+  role: string;
+  startDate?: Date;
+  endDate?: Date;
+  description?: string;
+}
+
+interface ICandidateEducationItem {
+  institution: string;
+  degree: string;
+  fieldOfStudy?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
 export interface ICandidateProfile {
   user: Types.ObjectId;
   name: string;
   phone: string;
   email?: string;
   address?: string;
+  bio?: string;
   skills?: string[];
+  experience?: ICandidateExperienceItem[];
+  education?: ICandidateEducationItem[];
   resume?: Types.ObjectId;
   createdAt?: Date;
   updatedAt?: Date;
@@ -19,7 +38,22 @@ const candidateProfileSchema = new Schema<ICandidateProfile>({
   phone: { type: String, required: true },
   email: { type: String },
   address: { type: String },
+  bio: { type: String, default: "" },
   skills: [{ type: String }],
+  experience: [{
+    company: { type: String, required: true },
+    role: { type: String, required: true },
+    startDate: { type: Date },
+    endDate: { type: Date },
+    description: { type: String }
+  }],
+  education: [{
+    institution: { type: String, required: true },
+    degree: { type: String, required: true },
+    fieldOfStudy: { type: String },
+    startDate: { type: Date },
+    endDate: { type: Date }
+  }],
   resume: { type: Schema.Types.ObjectId, ref: "Resume" }
 }, { timestamps: true });
 

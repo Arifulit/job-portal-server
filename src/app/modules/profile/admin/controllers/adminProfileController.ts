@@ -4,6 +4,23 @@ import * as adminService from "../services/adminProfileService";
 import bcrypt from "bcryptjs";
 import { AdminProfile } from "../models/AdminProfile";
 
+const toIdString = (value: unknown): string => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && "toString" in value) {
+    return (value as { toString: () => string }).toString();
+  }
+  return "";
+};
+
+const getAuthUserId = (req: Request | AuthenticatedRequest): string => {
+  return toIdString((req as any).user?.id || (req as any).user?._id);
+};
+
+const isAdminRole = (role: unknown): boolean => {
+  return String(role || "").toLowerCase().trim() === "admin";
+};
+
 // Create initial admin if not exists
 export const ensureAdminExists = async () => {
   try {
@@ -102,7 +119,9 @@ export const createAdminController = async (req: CreateAdminRequest, res: Respon
 export const getAdminController = async (req: Request, res: Response) => {
   try {
     // Use either the ID from params (for public access) or from the authenticated user
-    const userId = req.params.id || (req as any).user?.id;
+    const requestedId = toIdString(req.params.id);
+    const authUserId = getAuthUserId(req);
+    const userId = requestedId || authUserId;
     
     if (!userId) {
       return res.status(400).json({
@@ -112,7 +131,12 @@ export const getAdminController = async (req: Request, res: Response) => {
     }
 
     // Include all fields except the ones we explicitly exclude
-    const admin = await AdminProfile.findById(userId)
+    const admin = await AdminProfile.findOne({
+      $or: [
+        { user: userId },
+        { _id: userId },
+      ],
+    })
       .select('+password')  // Include password if needed
       .lean();
 
@@ -124,8 +148,9 @@ export const getAdminController = async (req: Request, res: Response) => {
     }
 
     // If the request is not from the owner or an admin, return limited profile data
-    const isOwner = (req as any).user?.id === admin._id.toString();
-    const isAdmin = (req as any).user?.role === 'admin';
+    const ownerId = toIdString((admin as any).user) || toIdString((admin as any)._id);
+    const isOwner = !!authUserId && ownerId === authUserId;
+    const isAdmin = isAdminRole((req as any).user?.role);
 
     if (!isOwner && !isAdmin) {
       // Return only public profile data
@@ -158,26 +183,38 @@ export const updateAdminController = async (req: AuthenticatedRequest, res: Resp
       });
     }
     
-    const adminId = req.user.id;
+    const adminId = getAuthUserId(req);
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User ID is missing in authentication token'
+      });
+    }
+
     const updateData = { ...req.body };
 
     // Find the admin
-    let admin = await AdminProfile.findById(adminId);
+    let admin = await AdminProfile.findOne({
+      $or: [
+        { user: adminId },
+        { _id: adminId },
+      ],
+    });
 
     if (!admin) {
-      // If admin doesn't exist, ensure we have the name field
-      if (!updateData.name) {
+      // If admin doesn't exist, ensure required fields for creation are present
+      if (!updateData.name || !(updateData.email || req.user.email)) {
         return res.status(400).json({
           success: false,
-          message: 'Name is required'
+          message: 'Name and email are required to create an admin profile'
         });
       }
 
       // Create new admin with provided fields
       admin = new AdminProfile({
-        _id: adminId,
+        user: adminId,
         name: updateData.name,
-        email: updateData.email || '',
+        email: updateData.email || req.user.email,
         role: 'Admin',
         ...(updateData.phone && { phone: updateData.phone })
       });

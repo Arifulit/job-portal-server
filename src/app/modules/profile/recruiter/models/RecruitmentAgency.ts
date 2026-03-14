@@ -1,4 +1,4 @@
-import { Schema, model, models } from "mongoose";
+import { Schema, model, models, Model } from "mongoose";
 
 export interface IRecruitmentAgency {
   name: string;
@@ -15,5 +15,5 @@ const recruitmentAgencySchema = new Schema<IRecruitmentAgency>({
 }, { timestamps: true });
 
 export const RecruitmentAgency =
-  (models.RecruitmentAgency as ReturnType<typeof model<IRecruitmentAgency>>) ||
+  (models.RecruitmentAgency as Model<IRecruitmentAgency>) ||
   model<IRecruitmentAgency>("RecruitmentAgency", recruitmentAgencySchema);

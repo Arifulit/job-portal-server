@@ -40,7 +40,6 @@ const handleRoute = (
 // Protected routes
 router.get(
   "/",
-  authMiddleware() as RequestHandler,
   handleRoute(getAllJobs)
 );
 
@@ -50,7 +49,6 @@ router.get('/all', authMiddleware(["admin", "recruiter"]) as RequestHandler, han
 
 router.get(
   "/:id",
-  authMiddleware() as RequestHandler,
   handleRoute(getJobById)
 );
 

@@ -1,5 +1,4 @@
-import { Response } from "express";
-import { AuthenticatedRequest } from "../../../../types/express";
+import { Request, Response } from "express";
 import { getJobRecommendations } from "../../../../integrations/openai/jobRecommender";
 
 /**
@@ -8,10 +7,11 @@ import { getJobRecommendations } from "../../../../integrations/openai/jobRecomm
  * Query param: ?limit=10 (default 10, max 20)
  */
 export async function getRecommendationsController(
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response
 ): Promise<void> {
-  const candidateUserId = req.user?.id || req.user?._id;
+  const user = req.user as any;
+  const candidateUserId = user?.id || user?._id;
   if (!candidateUserId) {
     res.status(401).json({ success: false, message: "Unauthorized" });
     return;

@@ -1,16 +1,9 @@
 import { Request, Response } from "express";
 import * as announcementService from "../services/announcementService";
 
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id?: string;
-    _id?: string;
-    role?: string;
-  };
-}
-
-export const createAnnouncementController = async (req: AuthenticatedRequest, res: Response) => {
-  const createdBy = req.user?.id || req.user?._id;
+export const createAnnouncementController = async (req: Request, res: Response) => {
+  const user = req.user as any;
+  const createdBy = user?.id || user?._id;
   if (!createdBy) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
   }

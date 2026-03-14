@@ -1,13 +1,4 @@
-// import { Router } from "express";
-// import { uploadResumeController, getResumeController } from "../controllers/resumeController";
-// import { authMiddleware } from "../../../../middleware/auth";
 
-// const router = Router();
-
-// router.post("/", authMiddleware(["Candidate"]), uploadResumeController);
-// router.get("/:candidateId", authMiddleware(["Candidate", "Admin"]), getResumeController);
-
-// export default router;
 import { Router, Request, Response, NextFunction } from "express";
 import { uploadResumeController, getResumeController, getCurrentResumeController } from "../controllers/resumeController";
 import authMiddleware, { optionalAuth } from "../../../../middleware/auth";

@@ -12,15 +12,13 @@ export function emitToUser(userId: string, event: string, payload: unknown): voi
   ioRef.to(`user:${userId}`).emit(event, payload);
 }
 
-// Extend Socket data type
+// Extend SocketData so Socket.data picks up the typed user property
 declare module "socket.io" {
-  interface Socket {
-    data: {
-      user: {
-        id: string;
-        email: string;
-        role: string;
-      };
+  interface SocketData {
+    user: {
+      id: string;
+      email: string;
+      role: string;
     };
   }
 }

@@ -1,7 +1,16 @@
 import { Request, Response } from "express";
-import { Types } from "mongoose";
 import * as candidateProfileService from "../services/candidateProfileService";
 import { CandidateProfile } from "../models/CandidateProfile";
+
+const getAuthUserId = (req: Request): string => {
+  const user = (req as any).user;
+  return String(user?.id || user?._id || "").trim();
+};
+
+const getAuthUserRole = (req: Request): string => {
+  const user = (req as any).user;
+  return String(user?.role || "").toLowerCase().trim();
+};
 
 export const createCandidateProfileController = async (req: Request, res: Response) => {
   try {
@@ -67,9 +76,11 @@ export const createCandidateProfileController = async (req: Request, res: Respon
 export const getCurrentCandidateProfileController = async (req: Request, res: Response) => {
   try {
     console.log("🟦 Controller: Getting current candidate profile");
+    const userId = getAuthUserId(req);
+    const userRole = getAuthUserRole(req);
     
     // If user is not authenticated
-    if (!req.user?.id) {
+    if (!userId) {
       console.log("⚠️ Controller: No user authenticated");
       return res.status(401).json({ 
         success: false, 
@@ -81,29 +92,37 @@ export const getCurrentCandidateProfileController = async (req: Request, res: Re
       });
     }
 
-    console.log("🟦 User authenticated, userId:", req.user.id);
-    let profile = await candidateProfileService.getCandidateProfile(req.user.id);
+    if (userRole && userRole !== "candidate") {
+      return res.status(403).json({
+        success: false,
+        message: "Only candidate users can access candidate profile"
+      });
+    }
+
+    console.log("🟦 User authenticated, userId:", userId);
+    let profile = await candidateProfileService.getCandidateProfile(userId);
     
-    // If no profile exists, return an empty profile with default values
+    // If no profile exists, initialize a profile so subsequent reads return data.
     if (!profile) {
-      profile = {
-        _id: new Types.ObjectId(),
-        user: new Types.ObjectId(req.user.id.toString()),
+      const profileData = {
+        user: userId,
         name: "",
         phone: "",
         address: "",
-        email: req.user.email || "", 
+        bio: "",
+        email: (req as any).user?.email || "",
         skills: [],
-        resume: undefined,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        __v: 0
+        experience: [],
+        education: []
       };
-      
+
+      profile = await candidateProfileService.createCandidateProfile(profileData);
+
       return res.status(200).json({
         success: true,
         isNew: true,
-        message: "No profile found. Please update to create a new profile."
+        message: "Profile initialized successfully. Please update your details.",
+        data: profile
       });
     }
 
@@ -195,8 +214,11 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
         name: req.body.name || "",
         phone: req.body.phone || "",
         address: req.body.address || "",
+        bio: req.body.bio || "",
         email: req.user.email || "", 
         skills: req.body.skills || [],
+        experience: req.body.experience || [],
+        education: req.body.education || [],
         ...req.body // Spread any other valid fields from the request
       };
       

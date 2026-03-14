@@ -3,7 +3,7 @@ export interface IApiResponse<T = any> {
   message: string;
   data?: T;
   errors?: any;
-  meta?: any;   // Pagination, count, etc
+  meta?: any;  
   cached?: boolean;
 }
 

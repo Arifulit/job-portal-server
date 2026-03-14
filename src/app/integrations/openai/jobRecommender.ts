@@ -78,7 +78,7 @@ function buildJobText(job: {
   description: string;
   location: string;
   jobType: string;
-  experienceLevel: string;
+  experienceLevel?: string;
   skills?: string[];
   requirements?: string[];
 }): string {
@@ -87,8 +87,8 @@ function buildJobText(job: {
     `Description: ${job.description}`,
     `Location: ${job.location}`,
     `Type: ${job.jobType}`,
-    `Experience Level: ${job.experienceLevel}`,
   ];
+  if (job.experienceLevel) parts.push(`Experience Level: ${job.experienceLevel}`);
   if (job.skills?.length)
     parts.push(`Required Skills: ${job.skills.join(", ")}`);
   if (job.requirements?.length)
