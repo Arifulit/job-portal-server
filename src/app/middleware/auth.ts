@@ -4,12 +4,12 @@
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import { AuthenticatedRequest } from "../../types/express";
+import { User } from "../modules/auth/models/User";
 
-type AuthenticatedHandler = (
-  req: AuthenticatedRequest,
-  res: Response,
-  next: NextFunction
-) => Promise<void> | void;
+const isAuthDebug = process.env.AUTH_DEBUG === "true";
+const authDebugLog = (...args: any[]) => {
+  if (isAuthDebug) console.log(...args);
+};
 
 function extractToken(req: Request): string | undefined {
   // 1. Check Authorization header first
@@ -29,18 +29,28 @@ function extractToken(req: Request): string | undefined {
   return undefined;
 }
 
+const normalizeRole = (value: unknown): "admin" | "recruiter" | "candidate" => {
+  const role = String(value || "candidate").toLowerCase().trim();
+
+  if (role === "admin" || role === "super_admin") return "admin";
+  if (role === "recruiter" || role === "recruiters" || role === "employer") return "recruiter";
+  if (role === "candidate" || role === "user") return "candidate";
+
+  return "candidate";
+};
+
 export const authMiddleware = (allowedRoles?: string[]): RequestHandler => {
   return async (req: Request | AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-      console.log("🔐 authMiddleware: Starting authentication check");
-      console.log("🔐 Request method:", req.method);
-      console.log("🔐 Request path:", req.path);
-      console.log("🔐 Allowed roles:", allowedRoles || "Any authenticated user");
+      authDebugLog("🔐 authMiddleware: Starting authentication check");
+      authDebugLog("🔐 Request method:", req.method);
+      authDebugLog("🔐 Request path:", req.path);
+      authDebugLog("🔐 Allowed roles:", allowedRoles || "Any authenticated user");
       
       // Extract token from request
       const token = extractToken(req);
       if (!token) {
-        console.log("⚠️ authMiddleware: No authentication token found");
+        authDebugLog("⚠️ authMiddleware: No authentication token found");
         return res.status(401).json({ 
           success: false, 
           message: "Authentication required" 
@@ -60,24 +70,34 @@ export const authMiddleware = (allowedRoles?: string[]): RequestHandler => {
       try {
         // Verify and decode the token
         const decoded = jwt.verify(token, secret) as any;
-        console.log("✅ authMiddleware: Token verified successfully");
+        authDebugLog("✅ authMiddleware: Token verified successfully");
         
         // Ensure required fields exist in the token
         if (!decoded.id) {
           throw new Error("Token missing required fields");
         }
 
-        // Set user in request object with proper role handling
-        // Default to 'candidate' role if not specified
-        let userRole = (decoded.role || 'candidate').toString().toLowerCase().trim();
-        
-        // Map legacy roles to new role structure if needed
-        if (userRole === 'user') userRole = 'candidate';
-        if (userRole === 'super_admin') userRole = 'admin';
+        // Resolve role from token payload first. If missing, fall back to DB lookup.
+        let resolvedRoleRaw = decoded.role ?? decoded?.user?.role;
+        let resolvedEmail = decoded.email || decoded?.user?.email || "";
+
+        if (!resolvedRoleRaw) {
+          const tokenUser = await User.findById(decoded.id).select("role email").lean();
+          if (!tokenUser) {
+            return res.status(401).json({
+              success: false,
+              message: "Invalid authentication token"
+            });
+          }
+          resolvedRoleRaw = tokenUser.role;
+          resolvedEmail = resolvedEmail || tokenUser.email || "";
+        }
+
+        const userRole = normalizeRole(resolvedRoleRaw);
         
         req.user = {
           id: decoded.id,
-          email: decoded.email || '',
+          email: resolvedEmail,
           role: userRole as 'admin' | 'recruiter' | 'candidate',
           ...decoded
         };
@@ -88,7 +108,7 @@ export const authMiddleware = (allowedRoles?: string[]): RequestHandler => {
         }
         
         const user = req.user;
-        console.log("🔐 Authenticated user:", {
+        authDebugLog("🔐 Authenticated user:", {
           id: user.id,
           role: user.role,
           email: user.email
@@ -98,36 +118,36 @@ export const authMiddleware = (allowedRoles?: string[]): RequestHandler => {
         if (allowedRoles && allowedRoles.length > 0) {
           const allowed = allowedRoles.map(r => r.toString().toLowerCase().trim());
           
-          console.log("🔐 Checking access - User role:", `'${userRole}'`, "| Allowed roles:", allowed);
+          authDebugLog("🔐 Checking access - User role:", `'${userRole}'`, "| Allowed roles:", allowed);
           
           // If user has 'admin' role, always allow access
           if (userRole === 'admin') {
-            console.log("✅ Admin access granted");
+            authDebugLog("✅ Admin access granted");
             next();
             return;
           }
           // If user is a recruiter, allow access to admin routes
           if (userRole === 'recruiter' && allowed.includes('admin')) {
-            console.log("✅ Recruiter has admin access");
+            authDebugLog("✅ Recruiter has admin access");
             next();
             return;
           }
           // Check if user has any of the allowed roles
           else if (userRole && allowed.includes(userRole)) {
-            console.log(`✅ Access granted for role: ${userRole}`);
+            authDebugLog(`✅ Access granted for role: ${userRole}`);
             next();
             return;
           }
           
           // If we get here, access is denied
-          console.log(`⚠️ authMiddleware: Access denied - Role '${userRole}' not in`, allowed);
+          authDebugLog(`⚠️ authMiddleware: Access denied - Role '${userRole}' not in`, allowed);
           return res.status(403).json({ 
             success: false, 
             message: `Forbidden - You don't have permission to access this resource` 
           });
         }
 
-        console.log("✅ authMiddleware: Authentication successful, proceeding to route handler");
+        authDebugLog("✅ authMiddleware: Authentication successful, proceeding to route handler");
         next();
       } catch (verifyError: any) {
         console.error("❌ authMiddleware: Token verification failed:", verifyError.message);
@@ -161,9 +181,9 @@ export const optionalAuth: RequestHandler = (req, res, next) => {
       role: (decoded.role || 'user').toLowerCase().trim(),
       ...decoded
     };
-    console.log("🔐 Optional auth - Authenticated user:", req.user?.id);
-  } catch (error) {
-    console.log("ℹ️ Optional auth - Invalid token, continuing as guest");
+    authDebugLog("🔐 Optional auth - Authenticated user:", req.user?.id);
+  } catch (_error) {
+    authDebugLog("ℹ️ Optional auth - Invalid token, continuing as guest");
   }
   
   next();
@@ -172,7 +192,7 @@ export const optionalAuth: RequestHandler = (req, res, next) => {
 // Middleware to ensure user is authenticated and has the required role
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user) {
-    console.log("⚠️ requireAuth: User not authenticated");
+    authDebugLog("⚠️ requireAuth: User not authenticated");
     return res.status(401).json({ 
       success: false, 
       message: "Authentication required" 

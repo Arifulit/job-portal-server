@@ -1,8 +1,6 @@
 
-// src/routes/index.ts
 import { Router } from "express";
 import candidateRoutes from "../modules/profile/candidate/routes"; // direct candidate routes
-// // Employer routes removed
 import jobRoutes from "../modules/job/routes/jobRoutes";
 import applicationRoutes from "../modules/application/routes/applicationRoutes";
 import paymentRoutes from "../modules/payment/routes/paymentRoutes";
@@ -14,6 +12,11 @@ import recruiterRoutes from "../modules/profile/recruiter/routes";
 import adminRoutes from "../modules/profile/admin/routes";
 import messageRoutes from "../modules/message/routes/messageRoutes";
 import notificationRoutes from "../modules/notification/routes/notificationRoutes";
+import { authMiddleware } from "../middleware/auth";
+import {
+	getAdminDashboardStatsController,
+	getRoleBasedDashboardStatsController,
+} from "../modules/analytics/controllers/dashboardStatsController";
 
 const router = Router();
 
@@ -21,7 +24,6 @@ router.use("/auth", authRoutes);
 
 // Mount candidate routes for backward compatibility
 router.use("/candidate", candidateRoutes);
-// /api/v1/profile/recruiter/...
 router.use("/recruiter", recruiterRoutes);
 router.use("/admin", adminRoutes);
 
@@ -33,5 +35,10 @@ router.use("/company", companyRoutes);
 router.use("/agency", recruitmentAgencyRoutes);
 router.use("/messages", messageRoutes);
 router.use("/notifications", notificationRoutes);
+
+// Compatibility aliases for dashboard stats endpoints used by different clients.
+router.get("/dashboard/stats", authMiddleware(), getRoleBasedDashboardStatsController);
+router.get("/users/dashboard/stats", authMiddleware(), getRoleBasedDashboardStatsController);
+router.get("/admin/stats", authMiddleware(["admin"]), getAdminDashboardStatsController);
 
 export default router;

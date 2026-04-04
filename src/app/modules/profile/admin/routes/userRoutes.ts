@@ -13,7 +13,9 @@ import {
   impersonateUserController,
   updateUserRoleController,
   setRecruiterApprovalController,
-  getModerationOverviewController
+  rejectRecruiterController,
+  getModerationOverviewController,
+  deleteUserController
 } from "../controllers/userController";
 
 const router = Router();
@@ -64,6 +66,20 @@ router.put(
   "/:userId/recruiter-approval",
   authMiddleware(["admin"]),
   setRecruiterApprovalController as any
+);
+
+// Reject recruiter
+router.put(
+  "/:userId/reject",
+  authMiddleware(["admin"]),
+  rejectRecruiterController as any
+);
+
+// Delete a user (delete user and related data)
+router.delete(
+  "/:userId",
+  authMiddleware(["admin"]),
+  deleteUserController as any
 );
 
 export default router;

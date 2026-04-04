@@ -154,4 +154,8 @@ jobSchema.index({
   name: 'job_search_index'
 });
 
+// Speed up recruiter/admin dashboard filters and counts.
+jobSchema.index({ createdBy: 1, status: 1 });
+jobSchema.index({ status: 1, isApproved: 1 });
+
 export const Job = model<IJob>('Job', jobSchema);

@@ -42,4 +42,8 @@ const applicationSchema = new Schema<IApplication>({
   coverLetter: { type: String },
 }, { timestamps: true });
 
+// Speed up dashboard statistics queries by candidate/job/status.
+applicationSchema.index({ candidate: 1, status: 1 });
+applicationSchema.index({ job: 1, status: 1 });
+
 export const Application = model<IApplication>("Application", applicationSchema);

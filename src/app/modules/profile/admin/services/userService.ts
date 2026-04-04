@@ -2,6 +2,9 @@ import { Types } from "mongoose";
 import { User } from "../../../auth/models/User";
 import Company from "../../../company/models/Company";
 import { Job } from "../../../job/models/Job";
+import { CandidateProfile } from "../../candidate/models/CandidateProfile";
+import { RecruiterProfile } from "../../recruiter/models/RecruiterProfile";
+import { AdminProfile } from "../models/AdminProfile";
 
 // Get all users from the database
 export const impersonateUser = async (adminId: string, targetUserId: string) => {
@@ -218,6 +221,52 @@ export const setRecruiterApproval = async (adminId: string, userId: string, appr
   }
 };
 
+export const rejectRecruiter = async (adminId: string, userId: string, suspend = true) => {
+  try {
+    const adminUser = await User.findById(adminId).select('role');
+    if (!adminUser || adminUser.role !== 'admin') {
+      throw new Error('Only admin can reject recruiters');
+    }
+
+    const recruiter = await User.findById(userId);
+    if (!recruiter) {
+      throw new Error('User not found');
+    }
+
+    if (recruiter.role !== 'recruiter') {
+      throw new Error('Target user is not a recruiter');
+    }
+
+    recruiter.isRecruiterApproved = false;
+    recruiter.recruiterApprovedAt = null as any;
+    recruiter.recruiterApprovedBy = null as any;
+
+    if (suspend) {
+      recruiter.isSuspended = true;
+    }
+
+    await recruiter.save();
+
+    return {
+      success: true,
+      message: suspend
+        ? 'Recruiter rejected and suspended successfully'
+        : 'Recruiter rejected successfully',
+      data: {
+        userId: recruiter._id,
+        role: recruiter.role,
+        isRecruiterApproved: recruiter.isRecruiterApproved,
+        isSuspended: recruiter.isSuspended,
+        recruiterApprovedAt: recruiter.recruiterApprovedAt,
+        recruiterApprovedBy: recruiter.recruiterApprovedBy,
+      }
+    };
+  } catch (error) {
+    console.error('Error rejecting recruiter:', error);
+    throw error;
+  }
+};
+
 export const getModerationOverview = async () => {
   try {
     const [pendingRecruiters, pendingCompanies, verifiedCompanies, activeJobs, reportedJobs] = await Promise.all([
@@ -262,6 +311,57 @@ export const getModerationOverview = async () => {
     };
   } catch (error) {
     console.error('Error fetching moderation overview:', error);
+    throw error;
+  }
+};
+
+export const deleteUser = async (userId: string) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Prevent deletion of the last admin (if needed)
+    if (user.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        throw new Error('Cannot delete the last admin user');
+      }
+    }
+
+    // Store user info for related data cleanup
+    const userRole = user.role;
+    const userId_str = user._id.toString();
+
+    // Delete user and related data
+    await User.findByIdAndDelete(userId);
+
+    // Delete related profiles based on role
+    if (userRole === 'candidate') {
+      await CandidateProfile.deleteMany({ user: userId });
+    } else if (userRole === 'recruiter') {
+      await RecruiterProfile.deleteMany({ user: userId });
+      // Delete companies created by this recruiter
+      await Company.deleteMany({ createdBy: userId });
+      // Delete jobs created by this recruiter
+      await Job.deleteMany({ createdBy: userId });
+    } else if (userRole === 'admin') {
+      await AdminProfile.deleteMany({ user: userId });
+    }
+
+    return {
+      success: true,
+      message: `User (${userRole}) deleted successfully along with related data`,
+      data: {
+        userId: user._id,
+        email: user.email,
+        role: user.role,
+        deletedAt: new Date()
+      }
+    };
+  } catch (error) {
+    console.error('Error deleting user:', error);
     throw error;
   }
 };

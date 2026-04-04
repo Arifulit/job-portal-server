@@ -9,6 +9,7 @@ import {
 } from "../controllers/candidateProfileController";
 import authMiddleware, { optionalAuth } from "../../../../middleware/auth";
 import asyncHandler from "../../../../utils/asyncHandler";
+import { getCandidateDashboardStatsController } from "../../../analytics/controllers/dashboardStatsController";
 
 const router = Router();
 
@@ -26,5 +27,12 @@ router.use("/profile", candidateProfileRoutes);
 
 // Mount sub-routes
 router.use("/resume", resumeRoutes);
+
+// Candidate dashboard stats
+router.get(
+  "/dashboard/stats",
+  authMiddleware(["candidate"]),
+  asyncHandler(getCandidateDashboardStatsController)
+);
 
 export default router;

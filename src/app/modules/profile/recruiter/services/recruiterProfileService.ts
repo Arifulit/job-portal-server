@@ -12,7 +12,9 @@ export const createRecruiterProfile = async (data: CreateRecruiterProfileDTO) =>
 export const getRecruiterProfile = async (userId: string) => {
   return await RecruiterProfile.findOne({ user: userId })
     .populate("user", "name email role")
-    .populate("agency", "name");
+    .populate("agency", "name")
+    .select("user agency company designation phone bio createdAt updatedAt")
+    .lean();
 };
 
 export const updateRecruiterProfile = async (userId: string, data: any) => {

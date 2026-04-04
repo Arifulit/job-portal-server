@@ -2,6 +2,207 @@
 import { Job, IJob } from "../models/Job";
 import { FilterQuery, Types, PopulateOptions } from "mongoose";
 
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const normalizeFilterArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const normalizeBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalizedValue = value.trim().toLowerCase();
+
+    if (normalizedValue === "true") {
+      return true;
+    }
+
+    if (normalizedValue === "false") {
+      return false;
+    }
+  }
+
+  return undefined;
+};
+
+const normalizeNumber = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsedValue = Number(value);
+    if (Number.isFinite(parsedValue)) {
+      return parsedValue;
+    }
+  }
+
+  return undefined;
+};
+
+const buildJobQueryFilters = (
+  filters: FilterQuery<IJob> = {},
+  company?: Types.ObjectId | string,
+): FilterQuery<IJob> => {
+  const normalizedFilters: Record<string, unknown> = { ...filters };
+  const andConditions: FilterQuery<IJob>[] = [];
+
+  if (company) {
+    normalizedFilters.company = company;
+  }
+
+  const keyword =
+    typeof normalizedFilters.keyword === "string"
+      ? normalizedFilters.keyword.trim()
+      : "";
+  delete normalizedFilters.keyword;
+
+  if (keyword) {
+    const keywordRegex = new RegExp(escapeRegex(keyword), "i");
+    andConditions.push({
+      $or: [
+        { title: keywordRegex },
+        { description: keywordRegex },
+        { requirements: keywordRegex },
+        { skills: keywordRegex },
+        { location: keywordRegex },
+      ],
+    });
+  }
+
+  if (
+    typeof normalizedFilters.title === "string" &&
+    normalizedFilters.title.trim()
+  ) {
+    andConditions.push({
+      title: new RegExp(escapeRegex(normalizedFilters.title.trim()), "i"),
+    });
+  }
+  delete normalizedFilters.title;
+
+  if (
+    typeof normalizedFilters.description === "string" &&
+    normalizedFilters.description.trim()
+  ) {
+    andConditions.push({
+      description: new RegExp(
+        escapeRegex(normalizedFilters.description.trim()),
+        "i",
+      ),
+    });
+  }
+  delete normalizedFilters.description;
+
+  if (
+    typeof normalizedFilters.location === "string" &&
+    normalizedFilters.location.trim()
+  ) {
+    andConditions.push({
+      location: new RegExp(escapeRegex(normalizedFilters.location.trim()), "i"),
+    });
+  }
+  delete normalizedFilters.location;
+
+  const jobTypes = normalizeFilterArray(normalizedFilters.jobType);
+  if (jobTypes.length === 1) {
+    normalizedFilters.jobType = jobTypes[0];
+  } else if (jobTypes.length > 1) {
+    normalizedFilters.jobType = { $in: jobTypes };
+  } else {
+    delete normalizedFilters.jobType;
+  }
+
+  const experienceLevels = normalizeFilterArray(normalizedFilters.experienceLevel);
+  if (experienceLevels.length === 1) {
+    normalizedFilters.experienceLevel = experienceLevels[0];
+  } else if (experienceLevels.length > 1) {
+    normalizedFilters.experienceLevel = { $in: experienceLevels };
+  } else {
+    delete normalizedFilters.experienceLevel;
+  }
+
+  const isApproved = normalizeBoolean(normalizedFilters.isApproved);
+  if (isApproved !== undefined) {
+    normalizedFilters.isApproved = isApproved;
+  } else {
+    delete normalizedFilters.isApproved;
+  }
+
+  const salaryMin = normalizeNumber(normalizedFilters.salaryMin);
+  const salaryMax = normalizeNumber(normalizedFilters.salaryMax);
+  delete normalizedFilters.salaryMin;
+  delete normalizedFilters.salaryMax;
+
+  if (salaryMin !== undefined && salaryMax !== undefined) {
+    andConditions.push({
+      $or: [
+        { salary: { $gte: salaryMin, $lte: salaryMax } },
+        { salaryMin: { $gte: salaryMin, $lte: salaryMax } },
+        { salaryMax: { $gte: salaryMin, $lte: salaryMax } },
+        {
+          $and: [
+            { salaryMin: { $lte: salaryMax } },
+            { salaryMax: { $gte: salaryMin } },
+          ],
+        },
+      ],
+    });
+  } else if (salaryMin !== undefined) {
+    andConditions.push({
+      $or: [
+        { salary: { $gte: salaryMin } },
+        { salaryMin: { $gte: salaryMin } },
+        { salaryMax: { $gte: salaryMin } },
+      ],
+    });
+  } else if (salaryMax !== undefined) {
+    andConditions.push({
+      $or: [
+        { salary: { $lte: salaryMax } },
+        { salaryMin: { $lte: salaryMax } },
+      ],
+    });
+  }
+
+  Object.entries(normalizedFilters).forEach(([key, value]) => {
+    if (
+      value === undefined ||
+      value === null ||
+      value === "" ||
+      (Array.isArray(value) && value.length === 0)
+    ) {
+      delete normalizedFilters[key];
+    }
+  });
+
+  if (andConditions.length === 0) {
+    return normalizedFilters as FilterQuery<IJob>;
+  }
+
+  return {
+    ...(normalizedFilters as FilterQuery<IJob>),
+    $and: andConditions,
+  };
+};
+
 interface GetJobsOptions {
   filters?: FilterQuery<IJob>;
   sort?: Record<string, 1 | -1 | 'asc' | 'desc'>;
@@ -200,25 +401,16 @@ export const getJobs = async (options: GetJobsOptions = {}): Promise<any[]> => {
     company
   } = options;
 
-  // Add company to filters if provided
-  if (company) {
-    filters.company = company;
-  }
-
   try {
-    // Handle text search if search query is provided
-    if (filters.$text) {
-      await Job.syncIndexes();
-    }
-
-    // Build the query step by step with proper type assertions
     // Only show approved jobs by default if not otherwise specified
     if (!filters.status && !filters.isApproved) {
       filters.isApproved = true;
       filters.status = 'approved';
     }
 
-    let query = Job.find(filters);
+    const queryFilters = buildJobQueryFilters(filters, company);
+
+    let query = Job.find(queryFilters);
 
     // Apply sorting, skipping, and limiting
     query = query.sort(sort).skip(skip).limit(limit).select(select);
@@ -237,54 +429,23 @@ export const getJobs = async (options: GetJobsOptions = {}): Promise<any[]> => {
       }
     }
 
-    // Handle search conditions
-    const conditions: any[] = [];
-    
-    // Handle title and description search
-    if (!filters.$text) {
-      if (filters.title) {
-        conditions.push({ title: { $regex: filters.title, $options: 'i' } });
-        delete filters.title;
-      }
-      if (filters.description) {
-        conditions.push({ description: { $regex: filters.description, $options: 'i' } });
-        delete filters.description;
-      }
-    }
-
-    // Handle location search
-    if (filters.location) {
-      conditions.push({ location: new RegExp(filters.location, 'i') });
-      delete filters.location;
-    }
-
-    // Handle array filters
-    if (filters.jobType && Array.isArray(filters.jobType)) {
-      query = query.where('jobType').in(filters.jobType);
-      delete filters.jobType;
-    }
-
-    if (filters.experienceLevel && Array.isArray(filters.experienceLevel)) {
-      query = query.where('experienceLevel').in(filters.experienceLevel);
-      delete filters.experienceLevel;
-    }
-
-    // Apply remaining filters
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        query = query.where(key).equals(value);
-      }
-    });
-
-    // Apply OR conditions if any
-    if (conditions.length > 0) {
-      query = query.or(conditions);
-    }
-
     return await query.lean().exec();
   } catch (error) {
     console.error('Error in getJobs service:', error);
     throw new Error(`Failed to fetch jobs: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+export const countJobs = async (
+  filters: FilterQuery<IJob> = {},
+  company?: Types.ObjectId | string,
+): Promise<number> => {
+  try {
+    const queryFilters = buildJobQueryFilters(filters, company);
+    return await Job.countDocuments(queryFilters);
+  } catch (error) {
+    console.error('Error in countJobs service:', error);
+    throw new Error(`Failed to count jobs: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 export const deleteJob = async (id: string) => {

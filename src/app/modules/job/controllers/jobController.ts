@@ -6,11 +6,126 @@ import { IJobUpdateData, Job } from "../models/Job";
 import { Types } from "mongoose";
 import { User } from "../../auth/models/User";
 
-type SearchOptions = {
-  filters?: any;
-  sort?: any;
-  page?: number;
-  limit?: number;
+const supportedJobTypes = new Set([
+  "full-time",
+  "remote",
+  "part-time",
+  "contract",
+  "internship",
+  "freelance",
+]);
+
+const getSingleQueryValue = (value: unknown): string | undefined => {
+  if (Array.isArray(value)) {
+    return value.find((item) => typeof item === "string" && item.trim())?.trim();
+  }
+
+  if (typeof value === "string") {
+    const trimmedValue = value.trim();
+    return trimmedValue || undefined;
+  }
+
+  return undefined;
+};
+
+const getMultipleQueryValues = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => String(item).split(","))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const normalizeJobTypeValue = (value: string): string =>
+  value.trim().toLowerCase().replace(/\s+/g, "-");
+
+const normalizeBooleanQuery = (value: unknown): boolean | undefined => {
+  const rawValue = getSingleQueryValue(value)?.toLowerCase();
+
+  if (rawValue === "true") {
+    return true;
+  }
+
+  if (rawValue === "false") {
+    return false;
+  }
+
+  return undefined;
+};
+
+const getNumericQueryValue = (value: unknown): number | undefined => {
+  const rawValue = getSingleQueryValue(value);
+  if (!rawValue) {
+    return undefined;
+  }
+
+  const parsedValue = Number(rawValue);
+  return Number.isFinite(parsedValue) ? parsedValue : undefined;
+};
+
+const normalizeStatusValue = (value?: string): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalizedValue = value.toLowerCase();
+
+  if (normalizedValue === "active" || normalizedValue === "open") {
+    return "approved";
+  }
+
+  return normalizedValue;
+};
+
+const buildJobListFilters = (query: AuthenticatedRequest["query"]) => {
+  const keywordAliases = [query.keyword, query.search, query.searchTerm, query.q];
+  const keyword = keywordAliases.map(getSingleQueryValue).find(Boolean);
+  const location = getSingleQueryValue(query.location) || getSingleQueryValue(query.city);
+  const requestedJobTypes = getMultipleQueryValues(
+    query.jobType ?? query.type ?? query.employmentType,
+  ).map(normalizeJobTypeValue);
+  const matchedJobTypes = requestedJobTypes.filter((value) => supportedJobTypes.has(value));
+  const unmatchedJobTypes = requestedJobTypes.filter((value) => !supportedJobTypes.has(value));
+  const experienceLevels = getMultipleQueryValues(query.experienceLevel).map((value) =>
+    value.toLowerCase(),
+  );
+  const status = normalizeStatusValue(getSingleQueryValue(query.status));
+  const isApproved = normalizeBooleanQuery(query.isApproved);
+  const company = getSingleQueryValue(query.company);
+  const salaryMin =
+    getNumericQueryValue(query.salaryMin) ?? getNumericQueryValue(query.minSalary);
+  const salaryMax =
+    getNumericQueryValue(query.salaryMax) ?? getNumericQueryValue(query.maxSalary);
+  const keywordTerms = [keyword, ...unmatchedJobTypes].filter(Boolean);
+
+  const filters: Record<string, unknown> = {
+    ...(keywordTerms.length ? { keyword: keywordTerms.join(" ") } : {}),
+    ...(location ? { location } : {}),
+    ...(matchedJobTypes.length ? { jobType: matchedJobTypes } : {}),
+    ...(experienceLevels.length ? { experienceLevel: experienceLevels } : {}),
+    ...(status ? { status } : {}),
+    ...(typeof isApproved === "boolean" ? { isApproved } : {}),
+    ...(company ? { company } : {}),
+    ...(typeof salaryMin === "number" ? { salaryMin } : {}),
+    ...(typeof salaryMax === "number" ? { salaryMax } : {}),
+  };
+
+  if (!status && typeof isApproved !== "boolean") {
+    filters.status = "approved";
+    filters.isApproved = true;
+  }
+
+  return filters;
 };
 
 const toIdString = (value: any): string | null => {
@@ -25,73 +140,119 @@ const getAuthUserId = (user: AuthenticatedRequest["user"]): string | null => {
   return toIdString((user as any)?._id) || toIdString(user?.id);
 };
 
-export type AuthenticatedHandler = (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<Response | void>;
+export type AuthenticatedHandler = (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => Promise<Response | void>;
 
 // Get job by ID
-export const getJobById = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const getJobById = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction,
+) => {
   try {
     const { id } = req.params;
-    
+
     if (!Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid job ID' 
+      return res.status(400).json({
+        success: false,
+        message: "Invalid job ID",
       });
     }
 
     const job = await jobService.getJobById(id);
-    
+
     if (!job) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Job not found' 
+        message: "Job not found",
       });
     }
 
     // Allow all authenticated users to view job details
     return res.status(200).json({
       success: true,
-      data: job
+      data: job,
     });
   } catch (error) {
-    console.error('Error in getJobById:', error);
+    console.error("Error in getJobById:", error);
     return res.status(500).json({
       success: false,
-      message: 'Internal server error',
+      message: "Internal server error",
       error: {
-        code: 'INTERNAL_SERVER_ERROR',
-        description: error instanceof Error ? error.message : 'An unknown error occurred'
-      }
+        code: "INTERNAL_SERVER_ERROR",
+        description:
+          error instanceof Error ? error.message : "An unknown error occurred",
+      },
     });
   }
 };
 
 // Input validation for job creation
-const validateJobInput = (data: any): { isValid: boolean; message?: string } => {
-  if (!data.title || typeof data.title !== 'string' || data.title.trim().length < 5) {
-    return { isValid: false, message: 'Title is required and must be at least 5 characters long' };
+const validateJobInput = (
+  data: any,
+): { isValid: boolean; message?: string } => {
+  if (
+    !data.title ||
+    typeof data.title !== "string" ||
+    data.title.trim().length < 5
+  ) {
+    return {
+      isValid: false,
+      message: "Title is required and must be at least 5 characters long",
+    };
   }
-  if (!data.description || typeof data.description !== 'string' || data.description.trim().length < 20) {
-    return { isValid: false, message: 'Description is required and must be at least 20 characters long' };
+  if (
+    !data.description ||
+    typeof data.description !== "string" ||
+    data.description.trim().length < 20
+  ) {
+    return {
+      isValid: false,
+      message:
+        "Description is required and must be at least 20 characters long",
+    };
   }
-  if (!data.location || typeof data.location !== 'string') {
-    return { isValid: false, message: 'Location is required' };
+  if (!data.location || typeof data.location !== "string") {
+    return { isValid: false, message: "Location is required" };
   }
   return { isValid: true };
 };
 
-const inferExperienceLevel = (experience?: string): "entry" | "mid-level" | "senior" | "lead" | "executive" => {
+const inferExperienceLevel = (
+  experience?: string,
+): "entry" | "mid-level" | "senior" | "lead" | "executive" => {
   const normalized = (experience || "").toLowerCase();
-  if (normalized.includes("executive") || normalized.includes("director") || normalized.includes("10+") || normalized.includes("12+")) {
+  if (
+    normalized.includes("executive") ||
+    normalized.includes("director") ||
+    normalized.includes("10+") ||
+    normalized.includes("12+")
+  ) {
     return "executive";
   }
-  if (normalized.includes("lead") || normalized.includes("8+") || normalized.includes("9+")) {
+  if (
+    normalized.includes("lead") ||
+    normalized.includes("8+") ||
+    normalized.includes("9+")
+  ) {
     return "lead";
   }
-  if (normalized.includes("senior") || normalized.includes("5+") || normalized.includes("6+") || normalized.includes("7+")) {
+  if (
+    normalized.includes("senior") ||
+    normalized.includes("5+") ||
+    normalized.includes("6+") ||
+    normalized.includes("7+")
+  ) {
     return "senior";
   }
-  if (normalized.includes("mid") || normalized.includes("3-") || normalized.includes("4-")) {
+  if (
+    normalized.includes("mid") ||
+    normalized.includes("3-") ||
+    normalized.includes("4-")
+  ) {
     return "mid-level";
   }
   return "entry";
@@ -103,15 +264,15 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: "Authentication required",
       });
     }
 
     // Only admin and recruiter can create jobs
-    if (req.user.role !== 'admin' && req.user.role !== 'recruiter') {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'Only admin and recruiters can create job postings' 
+    if (req.user.role !== "admin" && req.user.role !== "recruiter") {
+      return res.status(403).json({
+        success: false,
+        message: "Only admin and recruiters can create job postings",
       });
     }
 
@@ -120,35 +281,38 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
     if (!validation.isValid) {
       return res.status(400).json({
         success: false,
-        message: validation.message || 'Invalid job data'
+        message: validation.message || "Invalid job data",
       });
     }
 
-    const experienceLevel = req.body.experienceLevel || inferExperienceLevel(req.body.experience);
+    const experienceLevel =
+      req.body.experienceLevel || inferExperienceLevel(req.body.experience);
 
-    let autoApproveJob = req.user.role === 'admin';
+    let autoApproveJob = req.user.role === "admin";
 
-    if (req.user.role === 'recruiter') {
-      const recruiterUser = await User.findById(req.user.id).select('isRecruiterApproved isSuspended role').lean();
+    if (req.user.role === "recruiter") {
+      const recruiterUser = await User.findById(req.user.id)
+        .select("isRecruiterApproved isSuspended role")
+        .lean();
 
-      if (!recruiterUser || recruiterUser.role !== 'recruiter') {
+      if (!recruiterUser || recruiterUser.role !== "recruiter") {
         return res.status(403).json({
           success: false,
-          message: 'Recruiter account not found'
+          message: "Recruiter account not found",
         });
       }
 
       if (recruiterUser.isSuspended) {
         return res.status(403).json({
           success: false,
-          message: 'Your account is suspended. Contact admin.'
+          message: "Your account is suspended. Contact admin.",
         });
       }
 
       if (!recruiterUser.isRecruiterApproved) {
         return res.status(403).json({
           success: false,
-          message: 'Recruiter account is pending admin approval'
+          message: "Recruiter account is pending admin approval",
         });
       }
 
@@ -159,7 +323,7 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
       ...req.body,
       experienceLevel,
       createdBy: new Types.ObjectId(req.user.id),
-      status: autoApproveJob ? 'approved' : 'pending',
+      status: autoApproveJob ? "approved" : "pending",
       isApproved: autoApproveJob,
       approvedAt: autoApproveJob ? new Date() : undefined,
       approvedBy: autoApproveJob ? new Types.ObjectId(req.user.id) : undefined,
@@ -172,11 +336,11 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
       deadline: req.body.deadline,
       vacancies: req.body.vacancies,
     };
-    
+
     const job = await jobService.createJob(jobData);
-    return res.status(201).json({ 
-      success: true, 
-      data: job 
+    return res.status(201).json({
+      success: true,
+      data: job,
     });
   } catch (error: any) {
     next(error);
@@ -189,31 +353,31 @@ export const updateJob: AuthenticatedHandler = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: "Authentication required",
       });
     }
 
     const jobId = req.params.id;
-    
+
     if (!jobId || !Types.ObjectId.isValid(jobId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid job ID format'
+        message: "Invalid job ID format",
       });
     }
 
     // Get the job to check permissions
     const job = await jobService.getJobById(jobId);
-    
+
     // Check permissions
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = req.user.role === "admin";
     const creatorId = toIdString((job as any).createdBy);
     const isOwner = creatorId === req.user.id;
-    
+
     if (!isAdmin && !isOwner) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'You are not authorized to update this job' 
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to update this job",
       });
     }
 
@@ -223,22 +387,26 @@ export const updateJob: AuthenticatedHandler = async (req, res, next) => {
       // Prevent updating createdBy and timestamps through the API
       createdBy: undefined,
       createdAt: undefined,
-      updatedAt: undefined
+      updatedAt: undefined,
     };
 
     // Validate the update data if needed
-    if (updateData.title && (typeof updateData.title !== 'string' || updateData.title.trim().length < 5)) {
+    if (
+      updateData.title &&
+      (typeof updateData.title !== "string" ||
+        updateData.title.trim().length < 5)
+    ) {
       return res.status(400).json({
         success: false,
-        message: 'Title must be at least 5 characters long'
+        message: "Title must be at least 5 characters long",
       });
     }
 
     const updatedJob = await jobService.updateJob(jobId, updateData);
-    
-    return res.status(200).json({ 
-      success: true, 
-      data: updatedJob 
+
+    return res.status(200).json({
+      success: true,
+      data: updatedJob,
     });
   } catch (error: any) {
     next(error);
@@ -251,45 +419,45 @@ export const deleteJob: AuthenticatedHandler = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: "Authentication required",
       });
     }
 
     const jobId = req.params.id;
-    
+
     if (!jobId || !Types.ObjectId.isValid(jobId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid job ID format'
+        message: "Invalid job ID format",
       });
     }
 
     // Get the job to check permissions
     const job = await jobService.getJobById(jobId);
-    
+
     // Check permissions
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = req.user.role === "admin";
     const creatorId = toIdString((job as any).createdBy);
     const isOwner = creatorId === req.user.id;
-    
+
     if (!isAdmin && !isOwner) {
-      return res.status(403).json({ 
-        success: false, 
-        message: 'You are not authorized to delete this job' 
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to delete this job",
       });
     }
 
     await jobService.deleteJob(jobId);
-    
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Job deleted successfully' 
+
+    return res.status(200).json({
+      success: true,
+      message: "Job deleted successfully",
     });
   } catch (error: any) {
-    if (error.message === 'Job not found') {
+    if (error.message === "Job not found") {
       return res.status(404).json({
         success: false,
-        message: 'Job not found'
+        message: "Job not found",
       });
     }
     next(error);
@@ -302,23 +470,23 @@ export const closeJob: AuthenticatedHandler = async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Authentication required'
+        message: "Authentication required",
       });
     }
 
     const jobId = req.params.jobId || req.params.id;
-    
+
     if (!jobId || !Types.ObjectId.isValid(jobId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid job ID format'
+        message: "Invalid job ID format",
       });
     }
 
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admin can close jobs'
+        message: "Only admin can close jobs",
       });
     }
 
@@ -326,7 +494,7 @@ export const closeJob: AuthenticatedHandler = async (req, res, next) => {
     if (!authUserId || !Types.ObjectId.isValid(authUserId)) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid authenticated user identity'
+        message: "Invalid authenticated user identity",
       });
     }
 
@@ -335,7 +503,7 @@ export const closeJob: AuthenticatedHandler = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: job,
-      message: 'Job closed successfully'
+      message: "Job closed successfully",
     });
   } catch (error) {
     next(error);
@@ -345,10 +513,10 @@ export const closeJob: AuthenticatedHandler = async (req, res, next) => {
 // Reject a job (Admin only)
 export const rejectJob: AuthenticatedHandler = async (req, res, next) => {
   try {
-    if (req.user?.role !== 'admin') {
+    if (req.user?.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admin can reject jobs'
+        message: "Only admin can reject jobs",
       });
     }
 
@@ -358,14 +526,15 @@ export const rejectJob: AuthenticatedHandler = async (req, res, next) => {
     if (!jobId) {
       return res.status(400).json({
         success: false,
-        message: 'Job ID is required'
+        message: "Job ID is required",
       });
     }
 
-    if (!reason || typeof reason !== 'string' || reason.trim().length < 5) {
+    if (!reason || typeof reason !== "string" || reason.trim().length < 5) {
       return res.status(400).json({
         success: false,
-        message: 'Rejection reason is required and must be at least 5 characters long'
+        message:
+          "Rejection reason is required and must be at least 5 characters long",
       });
     }
 
@@ -373,7 +542,7 @@ export const rejectJob: AuthenticatedHandler = async (req, res, next) => {
     if (!authUserId || !Types.ObjectId.isValid(authUserId)) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid authenticated user identity'
+        message: "Invalid authenticated user identity",
       });
     }
 
@@ -382,7 +551,7 @@ export const rejectJob: AuthenticatedHandler = async (req, res, next) => {
     return res.status(200).json({
       success: true,
       data: job,
-      message: 'Job rejected successfully'
+      message: "Job rejected successfully",
     });
   } catch (error) {
     next(error);
@@ -392,18 +561,18 @@ export const rejectJob: AuthenticatedHandler = async (req, res, next) => {
 // Get pending jobs (Admin only)
 export const getPendingJobs: AuthenticatedHandler = async (req, res, next) => {
   try {
-    if (req.user?.role !== 'admin') {
+    if (req.user?.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: 'Only admin can view pending jobs'
+        message: "Only admin can view pending jobs",
       });
     }
 
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
 
     const pageNum = Math.max(1, Number(page) || 1);
@@ -411,20 +580,20 @@ export const getPendingJobs: AuthenticatedHandler = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const sort: { [key: string]: 1 | -1 } = {};
-    sort[String(sortBy)] = sortOrder === 'asc' ? 1 : -1;
+    sort[String(sortBy)] = sortOrder === "asc" ? 1 : -1;
 
     const [jobs, total] = await Promise.all([
       jobService.getPendingJobs({
-        filters: { status: 'pending' },
+        filters: { status: "pending" },
         sort,
         skip,
         limit: limitNum,
         populate: [
-          { path: 'createdBy', select: 'name email' },
-          { path: 'company', select: 'name logo' }
-        ]
+          { path: "createdBy", select: "name email" },
+          { path: "company", select: "name logo" },
+        ],
       }),
-      Job.countDocuments({ status: 'pending' })
+      Job.countDocuments({ status: "pending" }),
     ]);
 
     return res.status(200).json({
@@ -434,8 +603,8 @@ export const getPendingJobs: AuthenticatedHandler = async (req, res, next) => {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
-      }
+        totalPages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error) {
     next(error);
@@ -445,11 +614,11 @@ export const getPendingJobs: AuthenticatedHandler = async (req, res, next) => {
 // Get approved jobs
 export const getApprovedJobs: AuthenticatedHandler = async (req, res, next) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
 
     const pageNum = Math.max(1, Number(page) || 1);
@@ -457,20 +626,20 @@ export const getApprovedJobs: AuthenticatedHandler = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const sort: { [key: string]: 1 | -1 } = {};
-    sort[String(sortBy)] = sortOrder === 'asc' ? 1 : -1;
+    sort[String(sortBy)] = sortOrder === "asc" ? 1 : -1;
 
     const [jobs, total] = await Promise.all([
       jobService.getApprovedJobs({
-        filters: { status: 'approved', isApproved: true },
+        filters: { status: "approved", isApproved: true },
         sort,
         skip,
         limit: limitNum,
         populate: [
-          { path: 'createdBy', select: 'name email' },
-          { path: 'company', select: 'name logo' }
-        ]
+          { path: "createdBy", select: "name email" },
+          { path: "company", select: "name logo" },
+        ],
       }),
-      Job.countDocuments({ status: 'approved', isApproved: true })
+      Job.countDocuments({ status: "approved", isApproved: true }),
     ]);
 
     return res.status(200).json({
@@ -480,8 +649,8 @@ export const getApprovedJobs: AuthenticatedHandler = async (req, res, next) => {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
-      }
+        totalPages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error) {
     next(error);
@@ -491,12 +660,11 @@ export const getApprovedJobs: AuthenticatedHandler = async (req, res, next) => {
 // Get all jobs with filtering and pagination
 export const getAllJobs: AuthenticatedHandler = async (req, res, next) => {
   try {
-    const { 
-      page = 1, 
+    const {
+      page = 1,
       limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-      ...filters
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
 
     const pageNum = Math.max(1, Number(page) || 1);
@@ -504,15 +672,9 @@ export const getAllJobs: AuthenticatedHandler = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const sort: { [key: string]: 1 | -1 } = {};
-    sort[String(sortBy)] = sortOrder === 'asc' ? 1 : -1;
+    sort[String(sortBy)] = sortOrder === "asc" ? 1 : -1;
 
-    const queryFilters = {
-      ...filters,
-      ...(!filters?.status && !filters?.isApproved ? {
-        status: 'approved',
-        isApproved: 'true'
-      } : {})
-    };
+    const queryFilters = buildJobListFilters(req.query);
 
     const [jobs, total] = await Promise.all([
       jobService.getJobs({
@@ -521,11 +683,11 @@ export const getAllJobs: AuthenticatedHandler = async (req, res, next) => {
         skip,
         limit: limitNum,
         populate: [
-          { path: 'createdBy', select: 'name email' },
-          { path: 'company', select: 'name logo' }
-        ]
+          { path: "createdBy", select: "name email" },
+          { path: "company", select: "name logo" },
+        ],
       }),
-      Job.countDocuments(filters)
+      jobService.countJobs(queryFilters),
     ]);
 
     return res.status(200).json({
@@ -535,12 +697,10 @@ export const getAllJobs: AuthenticatedHandler = async (req, res, next) => {
         total,
         page: pageNum,
         limit: limitNum,
-        totalPages: Math.ceil(total / limitNum)
-      }
+        totalPages: Math.ceil(total / limitNum),
+      },
     });
   } catch (error) {
     next(error);
   }
 };
-
-

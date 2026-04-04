@@ -273,7 +273,6 @@ export const adminGetAllJobs: AuthenticatedHandler = async (req, res, next) => {
   }
 };
 
-// ...existing code...
 
 export const getRecruiterJobs: AuthenticatedHandler = async (req, res, next) => {
   try {

@@ -242,6 +242,34 @@ export const setRecruiterApprovalController = async (req: Request, res: Response
   }
 };
 
+export const rejectRecruiterController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { suspend = true } = req.body || {};
+
+    const adminId = (req.user as any)?._id?.toString() || (req.user as any)?.id?.toString();
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin authentication required'
+      });
+    }
+
+    const result = await userService.rejectRecruiter(adminId, userId, Boolean(suspend));
+    return res.status(200).json(result);
+  } catch (error: any) {
+    let statusCode = 500;
+    if (error.message?.includes('User not found')) statusCode = 404;
+    if (error.message?.includes('Only admin')) statusCode = 403;
+    if (error.message?.includes('not a recruiter')) statusCode = 400;
+
+    return res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Failed to reject recruiter'
+    });
+  }
+};
+
 export const getAllRecruitersController = async (req: Request, res: Response) => {
   try {
     const recruiters = await userService.getAllRecruiters();
@@ -280,6 +308,53 @@ export const getModerationOverviewController = async (req: Request, res: Respons
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to load moderation overview'
+    });
+  }
+};
+
+export const deleteUserController = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required",
+        error: {
+          code: "MISSING_USER_ID",
+          description: "The 'userId' parameter is required"
+        }
+      });
+    }
+
+    const result = await userService.deleteUser(userId);
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result.data
+    });
+  } catch (error: any) {
+    console.error("Error in deleteUserController:", error);
+
+    let statusCode = 500;
+    let errorCode = "USER_DELETE_ERROR";
+
+    if (error.message.includes("User not found")) {
+      statusCode = 404;
+      errorCode = "USER_NOT_FOUND";
+    } else if (error.message.includes("Cannot delete the last admin")) {
+      statusCode = 400;
+      errorCode = "CANNOT_DELETE_LAST_ADMIN";
+    }
+
+    res.status(statusCode).json({
+      success: false,
+      message: error.message || "Error deleting user",
+      error: {
+        code: errorCode,
+        description: error.message || "An error occurred while deleting the user"
+      }
     });
   }
 };

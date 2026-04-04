@@ -1,4 +1,3 @@
-
 import { Request, Response } from "express";
 import { Types } from "mongoose";
 import * as authService from "../services/authService";
@@ -54,48 +53,62 @@ export const register = async (req: Request, res: Response) => {
       companyAddress,
       industryType,
       websiteUrl,
-      skills
+      skills,
     } = req.body;
 
     // Required field validation
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Name, email, and password are required"
+        message: "Name, email, and password are required",
       });
     }
 
     // Create user
-    const user = await authService.registerUser(name, email, password, role as any);
+    const user = await authService.registerUser(
+      name,
+      email,
+      password,
+      role as any,
+    );
 
-    if (role === 'recruiter') {
+    if (role === "recruiter") {
       (user as any).isRecruiterApproved = false;
     }
 
     // Create corresponding profile based on role
     const userId = user._id.toString();
-    
+
     switch (role) {
       case "candidate":
         if (!phone) {
           return res.status(400).json({
             success: false,
-            message: "Phone number is required for candidate registration"
+            message: "Phone number is required for candidate registration",
           });
         }
         await CandidateProfile.create({
           user: userId,
           name,
           phone,
-          skills: skills || []
+          skills: skills || [],
         });
         break;
 
       case "recruiter": {
-        if (!phone || !designation || !companyName || !yearOfEstablishment || !companyAddress || !industryType || !websiteUrl) {
+        if (
+          !phone ||
+          !designation ||
+          !companyName ||
+          !yearOfEstablishment ||
+          !companyAddress ||
+          !industryType ||
+          !websiteUrl
+        ) {
           return res.status(400).json({
             success: false,
-            message: "Phone, designation, companyName, yearOfEstablishment, companyAddress, industryType and websiteUrl are required for recruiter registration"
+            message:
+              "Phone, designation, companyName, yearOfEstablishment, companyAddress, industryType and websiteUrl are required for recruiter registration",
           });
         }
 
@@ -107,14 +120,14 @@ export const register = async (req: Request, res: Response) => {
               industry: String(industryType).trim(),
               website: String(websiteUrl).trim(),
               address: String(companyAddress).trim(),
-              yearOfEstablishment: Number(yearOfEstablishment)
+              yearOfEstablishment: Number(yearOfEstablishment),
             },
             $setOnInsert: {
               name: normalizedCompanyName,
-              isVerified: false
-            }
+              isVerified: false,
+            },
           },
-          { new: true, upsert: true }
+          { new: true, upsert: true },
         );
 
         let agencyId = agency;
@@ -127,7 +140,7 @@ export const register = async (req: Request, res: Response) => {
             agencyDoc = await RecruitmentAgency.create({
               name: normalizedCompanyName,
               website: String(websiteUrl).trim(),
-              industry: String(industryType).trim()
+              industry: String(industryType).trim(),
             });
           }
 
@@ -139,7 +152,7 @@ export const register = async (req: Request, res: Response) => {
           phone,
           designation,
           agency: agencyId,
-          company: companyDoc._id
+          company: companyDoc._id,
         });
         break;
       }
@@ -148,7 +161,7 @@ export const register = async (req: Request, res: Response) => {
         if (!phone) {
           return res.status(400).json({
             success: false,
-            message: "Phone number is required for admin registration"
+            message: "Phone number is required for admin registration",
           });
         }
         await AdminProfile.create({
@@ -156,19 +169,22 @@ export const register = async (req: Request, res: Response) => {
           name,
           email,
           phone,
-          role: "Admin"
+          role: "Admin",
         });
         break;
 
       default:
         return res.status(400).json({
           success: false,
-          message: "Invalid role specified"
+          message: "Invalid role specified",
         });
     }
 
     // Generate tokens
-    const accessToken = authService.signToken({ id: userId, role: user.role, email: user.email }, ACCESS_TTL);
+    const accessToken = authService.signToken(
+      { id: userId, role: user.role, email: user.email },
+      ACCESS_TTL,
+    );
     const refreshToken = authService.signToken({ id: userId }, REFRESH_TTL);
 
     // Set refresh token cookie
@@ -176,25 +192,25 @@ export const register = async (req: Request, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE
+      maxAge: REFRESH_COOKIE_MAXAGE,
     });
 
     res.status(201).json({
       success: true,
-      message: role === 'recruiter'
-        ? 'Recruiter registered successfully. Waiting for admin approval.'
-        : 'Registration successful',
+      message:
+        role === "recruiter"
+          ? "Recruiter registered successfully. Waiting for admin approval."
+          : "Registration successful",
       data: {
         user: toAuthUserPayload(user),
         accessToken,
-        refreshToken
-      }
+        refreshToken,
+      },
     });
-
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: error.message || "Registration failed"
+      message: error.message || "Registration failed",
     });
   }
 };
@@ -206,7 +222,7 @@ export const login = async (req: Request, res: Response) => {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required"
+        message: "Email and password are required",
       });
     }
 
@@ -217,7 +233,7 @@ export const login = async (req: Request, res: Response) => {
     // Generate tokens
     const accessToken = authService.signToken(
       { id: userId, role: user.role, email: user.email },
-      ACCESS_TTL
+      ACCESS_TTL,
     );
 
     const refreshToken = authService.signToken({ id: userId }, REFRESH_TTL);
@@ -227,7 +243,7 @@ export const login = async (req: Request, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE
+      maxAge: REFRESH_COOKIE_MAXAGE,
     });
 
     res.status(200).json({
@@ -235,26 +251,26 @@ export const login = async (req: Request, res: Response) => {
       data: {
         user: toAuthUserPayload(user),
         accessToken,
-        refreshToken
-      }
+        refreshToken,
+      },
     });
-
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      message: error.message || "Login failed. Please check your credentials."
+      message: error.message || "Login failed. Please check your credentials.",
     });
   }
 };
 
 export const refresh = async (req: Request, res: Response) => {
   try {
-    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body.refreshToken;
+    const refreshToken =
+      req.cookies?.[REFRESH_COOKIE_NAME] || req.body.refreshToken;
 
     if (!refreshToken) {
       return res.status(401).json({
         success: false,
-        message: "Refresh token is required"
+        message: "Refresh token is required",
       });
     }
 
@@ -264,7 +280,7 @@ export const refresh = async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Invalid refresh token"
+        message: "Invalid refresh token",
       });
     }
 
@@ -272,14 +288,14 @@ export const refresh = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
     // Generate new tokens
     const newAccessToken = authService.signToken(
       { id: userId, role: user.role, email: user.email },
-      ACCESS_TTL
+      ACCESS_TTL,
     );
 
     const newRefreshToken = authService.signToken({ id: userId }, REFRESH_TTL);
@@ -289,21 +305,20 @@ export const refresh = async (req: Request, res: Response) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE
+      maxAge: REFRESH_COOKIE_MAXAGE,
     });
 
     res.status(200).json({
       success: true,
       data: {
         accessToken: newAccessToken,
-        refreshToken: newRefreshToken
-      }
+        refreshToken: newRefreshToken,
+      },
     });
-
   } catch (_error: any) {
     res.status(401).json({
       success: false,
-      message: "Invalid refresh token"
+      message: "Invalid refresh token",
     });
   }
 };
@@ -314,18 +329,17 @@ export const logout = async (req: Request, res: Response) => {
     res.clearCookie(REFRESH_COOKIE_NAME, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax"
+      sameSite: "lax",
     });
 
     res.status(200).json({
       success: true,
-      message: "Successfully logged out"
+      message: "Successfully logged out",
     });
-
   } catch (_error: any) {
     res.status(500).json({
       success: false,
-      message: "Logout failed"
+      message: "Logout failed",
     });
   }
 };
@@ -344,7 +358,7 @@ export const me = async (req: Request, res: Response) => {
     if (!token) {
       return res.status(401).json({
         success: false,
-        message: "Authentication token is required"
+        message: "Authentication token is required",
       });
     }
 
@@ -354,7 +368,7 @@ export const me = async (req: Request, res: Response) => {
     if (!userId) {
       return res.status(401).json({
         success: false,
-        message: "Invalid token"
+        message: "Invalid token",
       });
     }
 
@@ -362,7 +376,7 @@ export const me = async (req: Request, res: Response) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found"
+        message: "User not found",
       });
     }
 
@@ -392,18 +406,17 @@ export const me = async (req: Request, res: Response) => {
             recruiterApprovedBy: (user as any).recruiterApprovedBy ?? null,
           }
         : {}),
-      profile
+      profile,
     };
 
     res.status(200).json({
       success: true,
-      data: userResponse
+      data: userResponse,
     });
-
   } catch (error: any) {
     res.status(401).json({
       success: false,
-      message: error.message || "Invalid or expired token"
+      message: error.message || "Invalid or expired token",
     });
   }
 };

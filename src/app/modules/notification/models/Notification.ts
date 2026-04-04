@@ -16,4 +16,7 @@ const notificationSchema = new Schema<INotification>({
   relatedId: { type: Schema.Types.ObjectId },
 }, { timestamps: true });
 
+// Speed up user notification counters (total/unread) for dashboards.
+notificationSchema.index({ user: 1, read: 1, createdAt: -1 });
+
 export const Notification = model<INotification>("Notification", notificationSchema);

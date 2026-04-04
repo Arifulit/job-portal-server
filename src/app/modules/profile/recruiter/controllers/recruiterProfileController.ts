@@ -19,11 +19,8 @@ export const createRecruiterProfileController = async (req: Request, res: Respon
 // In recruiterProfileController.ts
 export const getRecruiterProfileController = async (req: Request, res: Response) => {
   try {
-    console.log("🟦 Controller: Getting recruiter profile");
-    
     // If user is not authenticated
     if (!req.user?.id) {
-      console.log("⚠️ Controller: No user authenticated");
       return res.status(401).json({ 
         success: false, 
         message: "Authentication required. Please log in to view your profile.",
@@ -35,12 +32,10 @@ export const getRecruiterProfileController = async (req: Request, res: Response)
     }
 
     const userId = req.params.userId === 'me' || !req.params.userId ? req.user.id : req.params.userId;
-    console.log("🟦 Getting profile for userId:", userId);
     
     const profile = await recruiterProfileService.getRecruiterProfile(userId);
     
     if (!profile) {
-      console.log("⚠️ Controller: Profile not found for userId:", userId);
       return res.status(404).json({ 
         success: false, 
         message: "Recruiter profile not found",
@@ -52,7 +47,6 @@ export const getRecruiterProfileController = async (req: Request, res: Response)
       });
     }
 
-    console.log("✅ Controller: Profile retrieved successfully");
     return res.status(200).json({ 
       success: true, 
       message: "Recruiter profile retrieved successfully",

@@ -9,7 +9,7 @@ Express + TypeScript + MongoDB backend for a multi-role job portal application.
 - Job posting, application, and recruiter review workflow
 - Resume upload support
 - Payment, audit log, notification, and messaging modules
-- Postman collection for end-to-end API testing
+- Postman collection for end-to-end API testing workflow
 
 ## Tech Stack
 

@@ -43,6 +43,11 @@ router.get(
   handleRoute(getAllJobs)
 );
 
+router.get(
+  "/search",
+  handleRoute(getAllJobs)
+);
+
 router.get('/all', authMiddleware(["admin", "recruiter"]) as RequestHandler, handleRoute(adminGetAllJobs));
 // Job applications routes
 // router.get("/admin/jobs/all", authMiddleware(["admin"]) as RequestHandler, handleRoute(adminGetAllJobs));

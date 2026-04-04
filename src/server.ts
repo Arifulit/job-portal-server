@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import "dotenv/config";
 import { createServer, Server } from "http";
 import mongoose from "mongoose";
@@ -8,6 +7,54 @@ import { initSocketServer } from "./app/integrations/socket";
 
 let server: Server | undefined;
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const connectMongoWithRetry = async (dbUrl: string) => {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await mongoose.connect(dbUrl, {
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000,
+        family: 4,
+      } as mongoose.ConnectOptions);
+      return;
+    } catch (error) {
+      const err = error as any;
+      const isDnsTxtTimeout =
+        err?.code === "ETIMEOUT" &&
+        err?.syscall === "queryTxt" &&
+        typeof err?.hostname === "string";
+
+      if (attempt < maxAttempts) {
+        console.warn(
+          `MongoDB connection attempt ${attempt}/${maxAttempts} failed. Retrying in 2s...`
+        );
+        await wait(2000);
+        continue;
+      }
+
+      if (isDnsTxtTimeout && dbUrl.startsWith("mongodb+srv://")) {
+        console.error("MongoDB Atlas DNS TXT lookup timed out.");
+        console.error(
+          "Your DNS server is resolving SRV records but timing out on TXT lookup for the Atlas host."
+        );
+        console.error("Fix options:");
+        console.error("1) Change system DNS to 8.8.8.8 or 1.1.1.1 and retry.");
+        console.error(
+          "2) Use a non-SRV MongoDB URI in DB_URL/DB_URI (mongodb://host1,host2,host3/...) from Atlas 'Drivers' page."
+        );
+        console.error(
+          "3) If using mobile hotspot/router DNS, switch network or configure router DNS manually."
+        );
+      }
+
+      throw error;
+    }
+  }
+};
+
 const startServer = async () => {
   try {
     const dbUrl = env.DB_URL;
@@ -15,11 +62,7 @@ const startServer = async () => {
       throw new Error("Database URL not provided. Set DB_URL, DB_URI, or MONGODB_URI in environment or .env");
     }
 
-    await mongoose.connect(dbUrl, {
-      // recommended options if needed (depends on mongoose version)
-      // useNewUrlParser: true,
-      // useUnifiedTopology: true,
-    } as mongoose.ConnectOptions);
+    await connectMongoWithRetry(dbUrl);
 
     console.log("Connected to MongoDB successfully");
 
