@@ -95,6 +95,12 @@ http://localhost:5000/api/v1
 - `job-server-api-postman_collection.json`
 - `job-portal-full-api-collection.postman_collection.json`
 
+## Vercel Deployment
+
+This repository is configured for API-only deployment on Vercel through [`api/index.ts`](api/index.ts) and [`vercel.json`](vercel.json).
+
+Note: Socket.IO/realtime features are not supported on Vercel serverless functions. Use the Vercel deployment only for the REST API.
+
 ## Notes
 
 - Use role-specific accounts when testing protected routes.
