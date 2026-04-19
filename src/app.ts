@@ -1,4 +1,5 @@
 
+// এই ফাইলটি Express app setup করে: middleware chain, route mount, notFound এবং error handler।
 import express, { Request, Response } from "express";
 import cookieParser from "cookie-parser";
 import cors from "cors";

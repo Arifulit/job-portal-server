@@ -1,3 +1,4 @@
+// এই ফাইলটি .env ভ্যালু load করে একক env object এ normalize করে।
 import dotenv from "dotenv";
 import path from "path";
 

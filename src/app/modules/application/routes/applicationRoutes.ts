@@ -1,53 +1,5 @@
-
-// import { Router } from "express";
-// import { 
-//   applyJob, 
-//   getCandidateApplications, 
-//   updateApplication,
-//   getJobApplications,
-//   getJobApplicationsNew,
-//   getJobAllApplications
-// } from "../controllers/applicationController";
-// import { authMiddleware } from "../../../middleware/auth";
-
-// const router = Router();
-
-// // Candidate routes
-// router.post("/", authMiddleware(["candidate"]), applyJob);
-// router.get("/me", authMiddleware(["candidate"]), getCandidateApplications);
-
-// // Recruiter routes
-// router.get(
-//   "/recruiter/all-applications",
-//   authMiddleware(["recruiter"]),
-//   getJobAllApplications
-// );
-
-// // Update application (PUT /:id) - MOVE THIS BEFORE parameterized routes
-// router.put(
-//   "/:id",
-//   authMiddleware(["admin", "recruiter"]),
-//   updateApplication
-// );
-
-// // View applications for a specific job
-// router.get(
-//   "/jobs/:jobId/applications", 
-//   authMiddleware(["recruiter", "admin"]), 
-//   getJobApplications
-// );
-
-// // Get all applications for a specific job (recruiter)
-// router.get(
-//   "/recruiter/jobs/:jobId/applications", 
-//   authMiddleware(["recruiter"]), 
-//   getJobApplicationsNew
-// );
-
-// export default router;
-
-// src/app/modules/application/routes/applicationRoutes.ts
-import { RequestHandler, Router } from "express";
+// এই ফাইলটি application submit/update/list endpoint এর route mapping করে।
+import { RequestHandler, Router, Request, Response, NextFunction } from "express";
 import { 
   applyJob, 
   getCandidateApplications, 
@@ -56,16 +8,35 @@ import {
   getJobApplicationsNew,
   getJobAllApplications,
   getApplicationsByUser,
-  getApplicationCountByUser
+  getApplicationCountByUser,
+  previewApplicationResume,
+  downloadApplicationResume,
+  withdrawApplication,
+  diagnoseResumeUrl,
+  testCloudinaryConfig,
+  testUrlAccessibility
 } from "../controllers/applicationController";
 import { authMiddleware } from "../../../middleware/auth";
+import { resumeUpload } from "../../../middleware/upload";
 
 const router = Router();
 
-// Candidate routes
-router.post("/", authMiddleware(["candidate"]), applyJob);
+const applicationResumeUpload = (req: Request, res: Response, next: NextFunction) => {
+  resumeUpload.fields([
+    { name: "resume", maxCount: 1 },
+    { name: "file", maxCount: 1 },
+  ])(req, res, (err) => {
+    if (err) {
+      return next(err);
+    }
+
+    next();
+  });
+};
+
+// Candidate routes — POST with optional resume file upload
+router.post("/", authMiddleware(["candidate"]), applicationResumeUpload, applyJob);
 router.get("/me", authMiddleware(["candidate"]), getCandidateApplications);
-import { withdrawApplication } from "../controllers/applicationController";
 
 // Recruiter routes
 router.get(
@@ -99,6 +70,14 @@ router.post(
   authMiddleware(["candidate"]),
   withdrawApplication
 );
+
+router.get("/:id/resume/preview", previewApplicationResume);
+router.get("/:id/resume/download", downloadApplicationResume);
+
+// Diagnostic endpoints for development (testing resume URLs and Cloudinary)
+router.get("/diagnose/resume-url", diagnoseResumeUrl);
+router.get("/test/cloudinary-config", testCloudinaryConfig);
+router.get("/test/url-accessibility", testUrlAccessibility);
 
 router.get(
   "/user/:userId",

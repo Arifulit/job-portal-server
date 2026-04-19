@@ -1,3 +1,4 @@
+// এই model user account schema এবং password verification rule define করে।
 
 
 import mongoose, { Document, Schema } from 'mongoose';

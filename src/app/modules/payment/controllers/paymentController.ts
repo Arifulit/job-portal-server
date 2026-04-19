@@ -1,3 +1,4 @@
+// এই controller payment request validate করে service result API response আকারে দেয়।
 import { Response } from "express";
 import { Types } from "mongoose";
 import { AuthenticatedRequest } from "../../../../types/express";

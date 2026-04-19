@@ -1,4 +1,4 @@
-// src/app/modules/job/controllers/jobController.ts
+// এই controller job module এর request handle করে service layer এ পাঠায়।
 import { Response, NextFunction } from "express";
 import * as jobService from "../services/jobService";
 import { AuthenticatedRequest } from "../../../../types/express";
@@ -284,6 +284,63 @@ const normalizeRequirements = (value: unknown): string[] | undefined => {
   return undefined;
 };
 
+const normalizeEducation = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) {
+    const cleaned = value.map((item) => String(item).trim()).filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value
+      .split(/\r?\n|,|;/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+  }
+
+  return undefined;
+};
+
+const normalizeTextList = (value: unknown): string[] | undefined => {
+  if (Array.isArray(value)) {
+    const cleaned = value.map((item) => String(item).trim()).filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value
+      .split(/\r?\n|,|;/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+  }
+
+  return undefined;
+};
+
+const normalizeGenderPreference = (
+  value: unknown,
+): "any" | "male" | "female" | "other" | undefined => {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (["male", "female", "other", "any"].includes(normalized)) {
+    return normalized as "any" | "male" | "female" | "other";
+  }
+  if (normalized === "men" || normalized === "man") return "male";
+  if (normalized === "women" || normalized === "woman") return "female";
+  return undefined;
+};
+
+const normalizeNumberField = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+};
+
 const normalizeJobUpdatePayload = (payload: Record<string, any>, isAdmin: boolean) => {
   const normalizedPayload = { ...payload };
 
@@ -301,6 +358,72 @@ const normalizeJobUpdatePayload = (payload: Record<string, any>, isAdmin: boolea
 
   if (normalizedRequirements !== undefined) {
     normalizedPayload.requirements = normalizedRequirements;
+  }
+
+  const normalizedEducation = normalizeEducation(
+    normalizedPayload.education ?? normalizedPayload.educationalRequirements,
+  );
+  if (normalizedEducation !== undefined) {
+    normalizedPayload.education = normalizedEducation;
+  }
+
+  const normalizedAdditionalRequirements = normalizeTextList(
+    normalizedPayload.additionalRequirements ?? normalizedPayload.additionalRequirement,
+  );
+  if (normalizedAdditionalRequirements !== undefined) {
+    normalizedPayload.additionalRequirements = normalizedAdditionalRequirements;
+  }
+
+  const normalizedBusinessAreas = normalizeTextList(
+    normalizedPayload.businessAreas ?? normalizedPayload.businessArea,
+  );
+  if (normalizedBusinessAreas !== undefined) {
+    normalizedPayload.businessAreas = normalizedBusinessAreas;
+  }
+
+  if (normalizedPayload.context !== undefined && normalizedPayload.jobContext === undefined) {
+    normalizedPayload.jobContext = String(normalizedPayload.context);
+  }
+
+  const ageMin = normalizeNumberField(normalizedPayload.ageMin ?? normalizedPayload.minAge);
+  const ageMax = normalizeNumberField(normalizedPayload.ageMax ?? normalizedPayload.maxAge);
+  if (ageMin !== undefined) {
+    normalizedPayload.ageMin = ageMin;
+  }
+  if (ageMax !== undefined) {
+    normalizedPayload.ageMax = ageMax;
+  }
+  if (
+    normalizedPayload.ageMin !== undefined &&
+    normalizedPayload.ageMax !== undefined &&
+    normalizedPayload.ageMin > normalizedPayload.ageMax
+  ) {
+    const temp = normalizedPayload.ageMin;
+    normalizedPayload.ageMin = normalizedPayload.ageMax;
+    normalizedPayload.ageMax = temp;
+  }
+
+  const genderPreference = normalizeGenderPreference(
+    normalizedPayload.genderPreference ?? normalizedPayload.gender,
+  );
+  if (genderPreference !== undefined) {
+    normalizedPayload.genderPreference = genderPreference;
+  }
+
+  if (
+    normalizedPayload.preferredIndustryExperience === undefined &&
+    normalizedPayload.industryExperience !== undefined
+  ) {
+    normalizedPayload.preferredIndustryExperience = String(
+      normalizedPayload.industryExperience,
+    );
+  }
+
+  const preferredExperienceYears = normalizeNumberField(
+    normalizedPayload.preferredExperienceYears,
+  );
+  if (preferredExperienceYears !== undefined) {
+    normalizedPayload.preferredExperienceYears = preferredExperienceYears;
   }
 
   if (normalizedPayload.type !== undefined && normalizedPayload.jobType === undefined) {
@@ -338,6 +461,14 @@ const normalizeJobUpdatePayload = (payload: Record<string, any>, isAdmin: boolea
   delete normalizedPayload.city;
   delete normalizedPayload.responsibility;
   delete normalizedPayload.requirement;
+  delete normalizedPayload.educationalRequirements;
+  delete normalizedPayload.additionalRequirement;
+  delete normalizedPayload.businessArea;
+  delete normalizedPayload.context;
+  delete normalizedPayload.minAge;
+  delete normalizedPayload.maxAge;
+  delete normalizedPayload.gender;
+  delete normalizedPayload.industryExperience;
 
   // Immutable/system-managed fields should never be overwritten directly.
   delete normalizedPayload._id;
@@ -469,6 +600,22 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
       requirements: normalizeRequirements(
         req.body.requirements ?? req.body.requirement,
       ),
+      education: normalizeEducation(
+        req.body.education ?? req.body.educationalRequirements,
+      ),
+      additionalRequirements: normalizeTextList(
+        req.body.additionalRequirements ?? req.body.additionalRequirement,
+      ),
+      businessAreas: normalizeTextList(req.body.businessAreas ?? req.body.businessArea),
+      jobContext: req.body.jobContext ?? req.body.context,
+      ageMin: normalizeNumberField(req.body.ageMin ?? req.body.minAge),
+      ageMax: normalizeNumberField(req.body.ageMax ?? req.body.maxAge),
+      genderPreference: normalizeGenderPreference(
+        req.body.genderPreference ?? req.body.gender,
+      ),
+      preferredIndustryExperience:
+        req.body.preferredIndustryExperience ?? req.body.industryExperience,
+      preferredExperienceYears: normalizeNumberField(req.body.preferredExperienceYears),
       createdBy: new Types.ObjectId(req.user.id),
       status: autoApproveJob ? "approved" : "pending",
       isApproved: autoApproveJob,
@@ -484,8 +631,26 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
       vacancies: req.body.vacancies,
     };
 
+    if (
+      typeof (jobData as any).ageMin === "number" &&
+      typeof (jobData as any).ageMax === "number" &&
+      (jobData as any).ageMin > (jobData as any).ageMax
+    ) {
+      const temp = (jobData as any).ageMin;
+      (jobData as any).ageMin = (jobData as any).ageMax;
+      (jobData as any).ageMax = temp;
+    }
+
     delete (jobData as any).responsibility;
-  delete (jobData as any).requirement;
+    delete (jobData as any).requirement;
+    delete (jobData as any).educationalRequirements;
+    delete (jobData as any).additionalRequirement;
+    delete (jobData as any).businessArea;
+    delete (jobData as any).context;
+    delete (jobData as any).minAge;
+    delete (jobData as any).maxAge;
+    delete (jobData as any).gender;
+    delete (jobData as any).industryExperience;
 
     const job = await jobService.createJob(jobData);
     return res.status(201).json({

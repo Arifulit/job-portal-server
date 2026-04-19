@@ -1,3 +1,4 @@
+// এই ফাইলটি payment create/history endpoint route mapping করে।
 import { Router, RequestHandler } from "express";
 import { createPaymentController, getPaymentsController } from "../controllers/paymentController";
 import { authMiddleware } from "../../../middleware/auth";

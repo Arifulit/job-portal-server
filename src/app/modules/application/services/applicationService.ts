@@ -1,10 +1,27 @@
+// এই service application module এর business rules এবং DB operations পরিচালনা করে।
 import { Application, IApplication } from "../models/Application";
 import { Job } from "../../job/models/Job";
 import { Types } from "mongoose";
 
 export const applyJob = async (data: IApplication) => {
   const existing = await Application.findOne({ candidate: data.candidate, job: data.job });
-  if (existing) throw new Error("Already applied for this job");
+  if (existing) {
+    if (existing.status === "Withdrawn") {
+      existing.status = "Applied";
+      existing.resume = data.resume ?? existing.resume;
+      existing.coverLetter = data.coverLetter ?? existing.coverLetter;
+      await existing.save();
+      return existing;
+    }
+
+    const duplicateError = new Error("Already applied for this job") as Error & {
+      code?: string;
+      status?: number;
+    };
+    duplicateError.code = "DUPLICATE_APPLICATION";
+    duplicateError.status = 409;
+    throw duplicateError;
+  }
   const application = await Application.create(data);
   return application;
 };

@@ -1,3 +1,4 @@
+// এই service register/login/token/refresh token business logic পরিচালনা করে।
 
 
 import { User, IUser } from "../models/User";
@@ -7,49 +8,42 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-do-not-use-in-production";
 
 export const registerUser = async (name: string, email: string, password: string, role: IUser["role"]) => {
-  try {
-    // চেক করুন ইমেইল ইতিমধ্যে ব্যবহৃত হয়েছে কিনা
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      throw new Error("Email already exists");
-    }
-
-    // নতুন user তৈরি করুন। Password automatically hash হবে pre-save middleware এর মাধ্যমে
-    const user = new User({ name, email, password, role });
-    await user.save();
-
-    // Create a new object without the password field using destructuring
-    const { password: _, ...userResponse } = user.toObject();
-    
-    return userResponse;
-  } catch (error) {
-    throw error;
+  // চেক করুন ইমেইল ইতিমধ্যে ব্যবহৃত হয়েছে কিনা
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    throw new Error("Email already exists");
   }
+
+  // নতুন user তৈরি করুন। Password automatically hash হবে pre-save middleware এর মাধ্যমে
+  const user = new User({ name, email, password, role });
+  await user.save();
+
+  // Create a new object without the password field using destructuring
+  const { password: _, ...userResponse } = user.toObject();
+  
+  return userResponse;
 };
 
 export const loginUser = async (email: string, password: string) => {
-  try {
-    // User খুঁজুন এবং স্পষ্টভাবে password field select করুন
-    const user = await User.findOne({ email }).select("+password");
-    
-    if (!user) {
-      throw new Error("User not found");
-    }
-
-    // Password verify করুন
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    
-    if (!isPasswordValid) {
-      throw new Error("Password incorrect");
-    }
-
-    // Remove password field from response using destructuring
-    const { password: pwd, ...userResponse } = user.toObject();
-    
-    return { user: userResponse };
-  } catch (error) {
-    throw error;
+  // User খুঁজুন এবং স্পষ্টভাবে password field select করুন
+  const user = await User.findOne({ email }).select("+password");
+  
+  if (!user) {
+    throw new Error("User not found");
   }
+
+  // Password verify করুন
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  
+  if (!isPasswordValid) {
+    throw new Error("Password incorrect");
+  }
+
+  // Remove password field from response using destructuring
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { password: pwd, ...userResponse } = user.toObject();
+  
+  return { user: userResponse };
 };
 
 export const signToken = (
@@ -70,7 +64,7 @@ export const verifyToken = (token: string): any => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET as jwt.Secret);
     return decoded;
-  } catch (error) {
+  } catch (_error) {
     throw new Error("Invalid token");
   }
 };
@@ -89,7 +83,7 @@ export const generateRefreshToken = (userId: string): string => {
 export const saveRefreshToken = async (userId: string, refreshToken: string): Promise<void> => {
   try {
     await User.findByIdAndUpdate(userId, { refreshToken });
-  } catch (error) {
+  } catch (_error) {
     throw new Error("Failed to save refresh token");
   }
 };
@@ -98,7 +92,7 @@ export const saveRefreshToken = async (userId: string, refreshToken: string): Pr
 export const removeRefreshToken = async (userId: string): Promise<void> => {
   try {
     await User.findByIdAndUpdate(userId, { refreshToken: null });
-  } catch (error) {
+  } catch (_error) {
     throw new Error("Failed to remove refresh token");
   }
 };
@@ -113,7 +107,7 @@ export const validateRefreshToken = async (refreshToken: string): Promise<boolea
     });
 
     return !!user; // User পাওয়া গেলে true, না হলে false
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 };
@@ -126,7 +120,7 @@ export const isValidRefreshTokenForUser = async (userId: string, refreshToken: s
       refreshToken: refreshToken 
     });
     return !!user;
-  } catch (error) {
+  } catch (_error) {
     return false;
   }
 };

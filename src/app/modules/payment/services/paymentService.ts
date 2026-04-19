@@ -1,3 +1,4 @@
+// এই service payment create/update/history business logic পরিচালনা করে।
 import { Payment, IPayment } from "../models/Payment";
 
 // Create a new payment record

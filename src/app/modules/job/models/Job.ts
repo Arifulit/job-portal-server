@@ -1,3 +1,4 @@
+// এই model job posting schema, validation, এবং status metadata define করে।
 import { Schema, model, Document, Types } from 'mongoose';
 
 export interface IStatusHistory {
@@ -12,6 +13,15 @@ export interface IJobUpdateData {
   description?: string;
   responsibilities?: string[];
   requirements?: string[];
+  education?: string[];
+  additionalRequirements?: string[];
+  businessAreas?: string[];
+  jobContext?: string;
+  ageMin?: number;
+  ageMax?: number;
+  genderPreference?: 'any' | 'male' | 'female' | 'other';
+  preferredIndustryExperience?: string;
+  preferredExperienceYears?: number;
   location?: string;
   jobType?: string;
   salary?: number;
@@ -39,6 +49,15 @@ export interface IJob extends Document {
   description: string;
   responsibilities?: string[];
   requirements: string[];
+  education?: string[];
+  additionalRequirements?: string[];
+  businessAreas?: string[];
+  jobContext?: string;
+  ageMin?: number;
+  ageMax?: number;
+  genderPreference?: 'any' | 'male' | 'female' | 'other';
+  preferredIndustryExperience?: string;
+  preferredExperienceYears?: number;
   location: string;
   jobType: string;
   salary?: number;
@@ -71,6 +90,19 @@ const jobSchema = new Schema<IJob>({
   description: { type: String, required: true },
   responsibilities: [{ type: String }],
   requirements: [{ type: String }],
+  education: [{ type: String }],
+  additionalRequirements: [{ type: String }],
+  businessAreas: [{ type: String }],
+  jobContext: { type: String },
+  ageMin: { type: Number, min: 0 },
+  ageMax: { type: Number, min: 0 },
+  genderPreference: {
+    type: String,
+    enum: ['any', 'male', 'female', 'other'],
+    default: 'any',
+  },
+  preferredIndustryExperience: { type: String },
+  preferredExperienceYears: { type: Number, min: 0 },
   location: { type: String, required: true },
   jobType: { 
     type: String, 
@@ -147,12 +179,22 @@ jobSchema.index({
   description: 'text',
   responsibilities: 'text',
   requirements: 'text',
+  education: 'text',
+  additionalRequirements: 'text',
+  businessAreas: 'text',
+  jobContext: 'text',
+  preferredIndustryExperience: 'text',
   skills: 'text'
 }, {
   weights: {
     title: 10,
     responsibilities: 7,
     requirements: 5,
+    education: 4,
+    additionalRequirements: 4,
+    businessAreas: 3,
+    jobContext: 4,
+    preferredIndustryExperience: 2,
     skills: 3,
     description: 1
   },

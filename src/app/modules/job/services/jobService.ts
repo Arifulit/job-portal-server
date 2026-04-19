@@ -1,4 +1,4 @@
-// src/app/modules/job/services/jobService.ts
+// এই service job search/filter/create/update business logic implement করে।
 import { Job, IJob } from "../models/Job";
 import { FilterQuery, Types, PopulateOptions } from "mongoose";
 
@@ -83,6 +83,11 @@ const buildJobQueryFilters = (
         { description: keywordRegex },
         { responsibilities: keywordRegex },
         { requirements: keywordRegex },
+        { education: keywordRegex },
+        { additionalRequirements: keywordRegex },
+        { businessAreas: keywordRegex },
+        { jobContext: keywordRegex },
+        { preferredIndustryExperience: keywordRegex },
         { skills: keywordRegex },
         { location: keywordRegex },
       ],

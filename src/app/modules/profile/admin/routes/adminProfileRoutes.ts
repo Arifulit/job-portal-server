@@ -6,7 +6,7 @@ import {
   updateAdminController,
   getAllAdminsController
 } from "../controllers/adminProfileController";
-import { AuthenticatedRequest } from "@/types/express";
+import { AuthenticatedRequest } from "../../../../../types/express";
 
 const router = Router();
 

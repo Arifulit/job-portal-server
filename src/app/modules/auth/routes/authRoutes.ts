@@ -1,3 +1,4 @@
+// এই ফাইলটি auth module এর endpoint route mapping করে।
 
 
 import { Router } from "express";

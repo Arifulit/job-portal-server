@@ -1,5 +1,6 @@
 import { Resume } from "../models/Resume";
 import { Types } from "mongoose";
+import { CandidateProfile } from "../models/CandidateProfile";
 
 export const uploadResume = async (data: any) => {
   try {
@@ -51,7 +52,17 @@ export const uploadResume = async (data: any) => {
 export const getResumeByCandidate = async (candidateId: string) => {
   try {
     console.log("📝 Service: Getting resume for candidateId:", candidateId);
-    const resume = await Resume.findOne({ candidate: candidateId });
+    let resume = await Resume.findOne({ candidate: candidateId });
+
+    if (!resume && Types.ObjectId.isValid(candidateId)) {
+      const profile = await CandidateProfile.findOne({ user: new Types.ObjectId(candidateId) })
+        .select("_id")
+        .lean();
+
+      if (profile?._id) {
+        resume = await Resume.findOne({ candidate: profile._id });
+      }
+    }
     
     if (!resume) {
       console.log("⚠️ Service: Resume not found for candidateId:", candidateId);

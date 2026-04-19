@@ -1,5 +1,4 @@
-
-// // import { Request, Response, NextFunction, RequestHandler } from "express";
+// এই middleware JWT token verify করে user identity এবং role authorization নিশ্চিত করে।
 
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt from "jsonwebtoken";

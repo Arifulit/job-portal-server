@@ -3,16 +3,12 @@
     /* Language and Environment */
     "target": "es2018",
     "module": "commonjs",
-    "moduleResolution": "node",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     
     /* Modules */
     "resolveJsonModule": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    },
+    "ignoreDeprecations": "5.0",
 
     /* Emit */
     "outDir": "./dist",

@@ -1,3 +1,4 @@
+// এই controller auth request গ্রহণ করে service call করে response return করে।
 import { Request, Response } from "express";
 import { Types } from "mongoose";
 import * as authService from "../services/authService";

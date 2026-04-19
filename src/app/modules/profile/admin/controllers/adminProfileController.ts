@@ -1,5 +1,5 @@
 import { Response, Request } from "express";
-import { AuthenticatedRequest } from "@/types/express";
+import { AuthenticatedRequest } from "../../../../../types/express";
 import * as adminService from "../services/adminProfileService";
 import bcrypt from "bcryptjs";
 import { AdminProfile } from "../models/AdminProfile";

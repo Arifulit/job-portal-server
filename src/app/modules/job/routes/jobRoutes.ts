@@ -1,3 +1,4 @@
+// এই ফাইলটি job related endpoint (public/recruiter/admin) route map করে।
 import { Router, type RequestHandler, Response, NextFunction } from "express";
 import { AuthenticatedRequest } from "../../../../types/express";
 import { 
@@ -48,6 +49,18 @@ router.get(
   "/search",
   optionalAuth,
   handleRoute(getAllJobs)
+);
+
+// Backward-compatible pagination alias:
+// GET /api/v1/jobs/page=1&limit=10
+router.get(
+  "/page=:page&limit=:limit",
+  optionalAuth,
+  (req, res) => {
+    const page = encodeURIComponent(String(req.params.page || 1));
+    const limit = encodeURIComponent(String(req.params.limit || 10));
+    return res.redirect(307, `${req.baseUrl}?page=${page}&limit=${limit}`);
+  }
 );
 
 router.get('/all', authMiddleware(["admin", "recruiter"]) as RequestHandler, handleRoute(adminGetAllJobs));

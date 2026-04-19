@@ -1,0 +1,95 @@
+{
+  "info": {
+    "name": "Resume Upload Tests",
+    "description": "Test collection for resume upload and retrieval endpoints"
+  },
+  "item": [
+    {
+      "name": "1. Upload Resume",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{candidate_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/candidate/resume",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "v1", "candidate", "resume"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "resume",
+              "type": "file",
+              "src": "/path/to/sample-resume.pdf"
+            }
+          ]
+        },
+        "description": "Upload a new resume or update existing resume for authenticated candidate"
+      },
+      "response": []
+    },
+    {
+      "name": "2. Get Current User's Resume",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{candidate_token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/candidate/resume",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "v1", "candidate", "resume"]
+        },
+        "description": "Get resume for authenticated candidate"
+      },
+      "response": []
+    },
+    {
+      "name": "3. Get Candidate Resume by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/candidate/resume/{{candidate_id}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5000",
+          "path": ["api", "v1", "candidate", "resume", "{{candidate_id}}"]
+        },
+        "description": "Get resume for specific candidate by candidate ID"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "candidate_token",
+      "value": "YOUR_CANDIDATE_JWT_TOKEN_HERE",
+      "type": "string"
+    },
+    {
+      "key": "candidate_id",
+      "value": "CANDIDATE_MONGODB_ID_HERE",
+      "type": "string"
+    }
+  ]
+}

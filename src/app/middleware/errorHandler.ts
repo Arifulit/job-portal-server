@@ -1,3 +1,4 @@
+// এই middleware application error গুলোকে standard API response আকারে পাঠায়।
 import { Request, Response, NextFunction } from "express";
 import ApiError from "../core/errors/ApiError";
 import { ApiResponse } from "../core/response/ApiResponse";

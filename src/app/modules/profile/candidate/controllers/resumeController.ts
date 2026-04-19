@@ -1,71 +1,131 @@
 import { Request, Response } from "express";
 import fs from "fs";
+import axios from "axios";
 import cloudinary from "../../../../config/cloudinary";
 import * as resumeService from "../services/resumeService";
 
-function buildCloudinaryUrlFromPublicId(publicId: string, format?: string): string {
+function isValidCloudinaryUrl(url: string): boolean {
+  return typeof url === "string" && url.includes("res.cloudinary.com");
+}
+
+function createPublicRawUrl(publicId: string, version?: number, attachment?: boolean): string {
   return cloudinary.url(publicId, {
+    resource_type: "raw",
+    type: "upload",
     secure: true,
-    resource_type: "raw",
-    type: "upload",
-    format,
+    sign_url: false,
+    version,
+    flags: attachment ? "attachment" : undefined,
   });
 }
 
-function buildCloudinarySignedDownloadUrl(publicId: string, format = "pdf"): string {
-  const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30; // 30 days
-
-  return cloudinary.utils.private_download_url(publicId, format, {
-    resource_type: "raw",
-    type: "upload",
-    expires_at: expiresAt,
-    attachment: false,
-  });
-}
-
-function parseCloudinaryPublicIdAndFormat(fileUrl: string): { publicId: string; format?: string } | null {
-  try {
-    const marker = "/raw/upload/";
-    const idx = fileUrl.indexOf(marker);
-    if (idx === -1) return null;
-
-    const afterMarker = fileUrl.slice(idx + marker.length);
-    const withoutVersion = afterMarker.replace(/^v\d+\//, "");
-    const cleanPath = withoutVersion.split("?")[0];
-
-    const extMatch = cleanPath.match(/\.([a-zA-Z0-9]+)$/);
-    if (extMatch) {
-      const format = extMatch[1].toLowerCase();
-      const publicId = cleanPath.replace(/\.[a-zA-Z0-9]+$/, "");
-      return { publicId, format };
-    }
-
-    return { publicId: cleanPath };
-  } catch {
+function extractCloudinaryRawAsset(url?: string): { publicId: string; version?: number } | null {
+  if (!url || typeof url !== "string") {
     return null;
   }
+
+  const withoutQuery = url.split("?")[0];
+  const match = withoutQuery.match(/\/raw\/upload\/(?:s--[^/]+--\/)?(?:fl_attachment\/)?(?:v(\d+)\/)?(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const version = match[1] ? Number(match[1]) : undefined;
+  const publicId = decodeURIComponent(match[2]);
+  if (!publicId) return null;
+
+  return {
+    publicId,
+    version: version && Number.isFinite(version) ? version : undefined,
+  };
 }
 
-function fixMalformedCloudinaryPdfUrl(fileUrl: string): string {
-  // Repair accidentally generated links like ...resume_123.pdf.pdf
-  return fileUrl.replace(/\.pdf\.pdf(\?|$)/i, ".pdf$1");
+function buildResumeLinks(url?: string): { sourceUrl: string | undefined; downloadUrl: string | undefined } {
+  if (!url || typeof url !== "string") {
+    return { sourceUrl: url, downloadUrl: url };
+  }
+
+  const asset = extractCloudinaryRawAsset(url);
+  if (asset?.publicId) {
+    return {
+      sourceUrl: createPublicRawUrl(asset.publicId, asset.version, false),
+      downloadUrl: createPublicRawUrl(asset.publicId, asset.version, true),
+    };
+  }
+
+  if (url.includes("fl_attachment")) {
+    return {
+      sourceUrl: url.replace("/fl_attachment/", "/"),
+      downloadUrl: url,
+    };
+  }
+
+  if (url.includes("/raw/upload/")) {
+    const cleanUrl = url.replace(/\/s--[^/]+--/, "");
+    return {
+      sourceUrl: cleanUrl,
+      downloadUrl: cleanUrl.replace("/raw/upload/", "/raw/upload/fl_attachment/"),
+    };
+  }
+
+  return {
+    sourceUrl: url,
+    downloadUrl: url,
+  };
+}
+
+async function streamResumeFromUrl(
+  resumeUrl: string,
+  res: Response,
+  disposition: "inline" | "attachment",
+): Promise<void> {
+  const cleanUrl = resumeUrl.replace(/\/s--[^/]+--/, "");
+  const targetUrl =
+    disposition === "attachment"
+      ? cleanUrl.replace("/raw/upload/", "/raw/upload/fl_attachment/")
+      : cleanUrl;
+
+  try {
+    const response = await axios.get(targetUrl, {
+      responseType: "stream",
+      timeout: 15000,
+    });
+
+    res.setHeader("Content-Type", response.headers["content-type"] || "application/pdf");
+    res.setHeader("Content-Disposition", `${disposition}; filename="resume.pdf"`);
+    res.setHeader("Cache-Control", "no-cache");
+    response.data.pipe(res);
+    return;
+  } catch (error: any) {
+    const status = error?.response?.status;
+    if (![401, 403, 404].includes(status)) {
+      throw error;
+    }
+
+    const asset = extractCloudinaryRawAsset(resumeUrl);
+    if (!asset?.publicId) {
+      throw error;
+    }
+
+    const retryUrl = createPublicRawUrl(asset.publicId, asset.version, disposition === "attachment");
+    const retryResponse = await axios.get(retryUrl, {
+      responseType: "stream",
+      timeout: 15000,
+    });
+
+    res.setHeader("Content-Type", retryResponse.headers["content-type"] || "application/pdf");
+    res.setHeader("Content-Disposition", `${disposition}; filename="resume.pdf"`);
+    res.setHeader("Cache-Control", "no-cache");
+    retryResponse.data.pipe(res);
+  }
 }
 
 export const uploadResumeController = async (req: Request, res: Response) => {
   try {
     console.log("🟦 Controller: Uploading resume");
-    console.log("🟦 Request body:", JSON.stringify(req.body, null, 2));
-    console.log("🟦 Request file:", (req as any).file ? {
-      fieldname: (req as any).file.fieldname,
-      originalname: (req as any).file.originalname,
-      filename: (req as any).file.filename,
-      mimetype: (req as any).file.mimetype,
-      size: (req as any).file.size
-    } : "No file");
-    console.log("🟦 Request files:", (req as any).files);
-    console.log("🟦 User from request:", req.user);
+    console.log("🟦 Request user:", req.user?.id);
     
-    // Automatically add candidate ID from authenticated user
+    // Authenticate user
     if (!req.user?.id) {
       console.log("⚠️ Controller: No user authenticated");
       return res.status(401).json({
@@ -78,117 +138,96 @@ export const uploadResumeController = async (req: Request, res: Response) => {
     let fileName: string;
     
     // Check if file was uploaded via form-data (multer)
-    const singleUploadedFile = (req as any).file;
+    const uploadedFile = (req as any).file;
     const uploadedFiles = (req as any).files as
       | Record<string, Express.Multer.File[]>
       | Express.Multer.File[]
       | undefined;
 
-    const uploadedFile =
-      singleUploadedFile ||
+    const file =
+      uploadedFile ||
       (Array.isArray(uploadedFiles)
         ? uploadedFiles[0]
         : uploadedFiles?.resume?.[0] || uploadedFiles?.file?.[0]);
-    if (uploadedFile) {
-      // File was uploaded via multer — now push to Cloudinary
-      console.log("🟦 File uploaded via multer, uploading to Cloudinary:", uploadedFile.path);
 
-      const cloudResult = await cloudinary.uploader.upload(uploadedFile.path, {
-        folder: "resumes",
-        resource_type: "raw",
-        type: "upload",
-        access_mode: "public",
-        public_id: `resume_${req.user!.id}_${Date.now()}`,
-        overwrite: true,
-      });
+    if (file) {
+      // File was uploaded via multer — upload to Cloudinary
+      console.log("📤 Uploading to Cloudinary:", file.originalname);
 
-      // Remove temp file from disk after successful upload
-      fs.unlink(uploadedFile.path, (err) => {
-        if (err) console.warn("⚠️ Could not delete temp file:", uploadedFile.path);
-      });
+      try {
+        const cloudResult = await cloudinary.uploader.upload(file.path, {
+          folder: "resumes",
+          resource_type: "raw",
+          type: "upload",
+          access_mode: "public",
+          public_id: `resume_${req.user!.id}_${Date.now()}`,
+          overwrite: true,
+        });
 
-      // Use Cloudinary's secure delivery URL directly so it works in browsers.
-      fileUrl = cloudResult.secure_url || buildCloudinaryUrlFromPublicId(cloudResult.public_id, cloudResult.format);
-      fileName = uploadedFile.originalname || uploadedFile.filename;
+        const publicViewUrl = createPublicRawUrl(cloudResult.public_id, cloudResult.version, false);
+        fileUrl = publicViewUrl;
+        fileName = file.originalname || file.filename;
 
-      console.log("🟦 Cloudinary URL:", fileUrl);
-      console.log("🟦 Generated fileName:", fileName);
+        console.log("✅ File uploaded to Cloudinary");
+        console.log("🔗 Public View URL:", fileUrl);
+
+        // Remove temp file from disk
+        fs.unlink(file.path, (err) => {
+          if (err) console.warn("⚠️ Could not delete temp file:", file.path);
+        });
+      } catch (uploadError: any) {
+        console.error("❌ Cloudinary upload failed:", uploadError.message);
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload file to cloud storage",
+          error: uploadError.message
+        });
+      }
     } else {
-      // Check if fileUrl and fileName are in request body (JSON request)
-      if (!req.body || typeof req.body !== "object") {
-        console.log("⚠️ Controller: No request body or invalid body");
+      // Check for JSON body with fileUrl and fileName
+      if (!req.body?.fileUrl || !req.body?.fileName) {
+        console.log("⚠️ Controller: Missing file or fileUrl/fileName");
         return res.status(400).json({
           success: false,
-          message: "Please provide resume file (form-data) or fileUrl and fileName (JSON)"
-        });
-      }
-      
-      // Get from request body (JSON request)
-      if (!req.body.fileUrl || (typeof req.body.fileUrl === "string" && req.body.fileUrl.trim() === "")) {
-        console.log("⚠️ Controller: fileUrl missing");
-        return res.status(400).json({
-          success: false,
-          message: "fileUrl is required. Either upload a file (form-data) or provide fileUrl in request body"
-        });
-      }
-      
-      if (!req.body.fileName || (typeof req.body.fileName === "string" && req.body.fileName.trim() === "")) {
-        console.log("⚠️ Controller: fileName missing");
-        return res.status(400).json({
-          success: false,
-          message: "fileName is required. Either upload a file (form-data) or provide fileName in request body"
+          message: "Please upload a file (form-data) or provide fileUrl and fileName in request body"
         });
       }
       
       fileUrl = req.body.fileUrl.trim();
       fileName = req.body.fileName.trim();
-    }
-    
-    // Prepare resume data with candidate ID from authenticated user
-    const resumeData = {
-      fileUrl,
-      fileName,
-      candidate: req.user.id // Use authenticated user's ID
-    };
-    
-    console.log("🟦 Resume data with candidate:", resumeData);
-    
-    const resume = await resumeService.uploadResume(resumeData);
-    const resumeObj: any = (resume as any).toObject ? (resume as any).toObject() : resume;
-
-    if (typeof resumeObj.fileUrl === "string" && resumeObj.fileUrl.includes("res.cloudinary.com")) {
-      resumeObj.fileUrl = fixMalformedCloudinaryPdfUrl(resumeObj.fileUrl);
-      const parsed = parseCloudinaryPublicIdAndFormat(resumeObj.fileUrl);
-      if (parsed?.publicId) {
-        resumeObj.fileUrl = buildCloudinarySignedDownloadUrl(parsed.publicId, parsed.format || "pdf");
-        resumeObj.publicFileUrl = buildCloudinaryUrlFromPublicId(parsed.publicId, parsed.format);
+      
+      if (!isValidCloudinaryUrl(fileUrl)) {
+        console.warn("⚠️ fileUrl is not a valid Cloudinary URL:", fileUrl);
       }
     }
     
-    console.log("✅ Controller: Resume uploaded successfully");
-    res.status(201).json({ success: true, data: resumeObj });
+    // Save resume data to database
+    const resumeData = {
+      fileUrl,
+      fileName,
+      candidate: req.user.id
+    };
+    
+    console.log("💾 Saving resume to database");
+    const resume = await resumeService.uploadResume(resumeData);
+    const resumeObj: any = (resume as any).toObject ? (resume as any).toObject() : resume;
+    const resumeLinks = buildResumeLinks(resumeObj.fileUrl);
+    resumeObj.fileUrl = resumeLinks.sourceUrl;
+    resumeObj.sourceUrl = resumeLinks.sourceUrl;
+    resumeObj.downloadUrl = resumeLinks.downloadUrl;
+    
+    console.log("✅ Resume uploaded successfully, ID:", resumeObj._id);
+    console.log("🔗 FileUrl:", resumeObj.fileUrl);
+    console.log("📥 DownloadUrl:", resumeObj.downloadUrl);
+    res.status(201).json({ 
+      success: true, 
+      data: resumeObj,
+      message: "Resume uploaded successfully"
+    });
   } catch (error: any) {
-    console.error("❌ Controller Error (upload):", error.message);
-    console.error("❌ Error name:", error.name);
-    console.error("❌ Error code:", error.code);
-    console.error("❌ Error stack:", error.stack);
+    console.error("❌ Controller Error:", error.message);
     
-    // Handle multer errors
-    if (error.code === "LIMIT_FILE_SIZE") {
-      return res.status(400).json({
-        success: false,
-        message: "File size too large"
-      });
-    }
-    
-    if (error.message && (error.message.includes("File type not supported") || error.message.includes("Only PDF files are allowed"))) {
-      return res.status(400).json({
-        success: false,
-        message: "Only PDF files are allowed for resume upload"
-      });
-    }
-    
-    // Handle validation errors from Mongoose
+    // Handle validation errors
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
@@ -197,7 +236,6 @@ export const uploadResumeController = async (req: Request, res: Response) => {
       });
     }
     
-    // Handle missing fields error
     if (error.missingFields) {
       return res.status(400).json({
         success: false,
@@ -206,62 +244,49 @@ export const uploadResumeController = async (req: Request, res: Response) => {
       });
     }
     
-    // Return detailed error for debugging
     return res.status(500).json({ 
       success: false, 
-      message: error.message || "Error uploading resume",
-      error: process.env.NODE_ENV === "development" ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : undefined
+      message: error.message || "Error uploading resume"
     });
   }
 };
 
 export const getCurrentResumeController = async (req: Request, res: Response) => {
   try {
-    console.log("🟦 Controller: Getting current user's resume");
-    console.log("🟦 Request method:", req.method);
-    console.log("🟦 User from request:", req.user);
-    console.log("🟦 Authorization header:", req.headers.authorization);
-    console.log("🟦 Request URL:", req.originalUrl);
+    console.log("🟦 Getting current user's resume");
     
     // If user is authenticated, get their resume
     if (req.user?.id) {
-      console.log("🟦 User authenticated, userId:", req.user.id);
+      console.log("📥 User authenticated, fetching resume for:", req.user.id);
       const resume = await resumeService.getResumeByCandidate(req.user.id);
+      
       if (!resume) {
-        console.log("⚠️ Controller: Resume not found for userId:", req.user.id);
+        console.log("⚠️ Resume not found for user:", req.user.id);
         return res.status(404).json({ 
           success: false, 
           message: "Resume not found. Please upload your resume first." 
         });
       }
 
-      // Normalize old Cloudinary URLs to signed browser-openable URL.
       const resumeObj: any = (resume as any).toObject ? (resume as any).toObject() : resume;
-      if (typeof resumeObj.fileUrl === "string" && resumeObj.fileUrl.includes("res.cloudinary.com")) {
-        resumeObj.fileUrl = fixMalformedCloudinaryPdfUrl(resumeObj.fileUrl);
-        const parsed = parseCloudinaryPublicIdAndFormat(resumeObj.fileUrl);
-        if (parsed?.publicId) {
-          resumeObj.fileUrl = buildCloudinarySignedDownloadUrl(parsed.publicId, parsed.format || "pdf");
-          resumeObj.publicFileUrl = buildCloudinaryUrlFromPublicId(parsed.publicId, parsed.format);
-        }
-      }
 
-      console.log("✅ Controller: Resume retrieved successfully");
+      const resumeLinks = buildResumeLinks(resumeObj.fileUrl);
+      resumeObj.fileUrl = resumeLinks.sourceUrl;
+      resumeObj.sourceUrl = resumeLinks.sourceUrl;
+      resumeObj.downloadUrl = resumeLinks.downloadUrl;
+
+      console.log("✅ Resume retrieved successfully");
       return res.status(200).json({ success: true, data: resumeObj });
     }
     
-    // If not authenticated, return helpful error message
-    console.log("⚠️ Controller: No user authenticated");
+    // If not authenticated
+    console.log("⚠️ No user authenticated");
     return res.status(401).json({ 
       success: false, 
-      message: "Authentication required. Please provide a valid token in Authorization header (Bearer <token>) or use GET /api/v1/candidate/resume/:candidateId to view a specific candidate's resume" 
+      message: "Authentication required. Please provide a valid token in Authorization header" 
     });
   } catch (error: any) {
-    console.error("❌ Controller Error (getCurrentResume):", error.message);
+    console.error("❌ Error getting resume:", error.message);
     return res.status(500).json({ 
       success: false, 
       message: error.message || "Error getting resume" 
@@ -271,37 +296,84 @@ export const getCurrentResumeController = async (req: Request, res: Response) =>
 
 export const getResumeController = async (req: Request, res: Response) => {
   try {
-    console.log("🟦 Controller: Getting resume");
-    console.log("🟦 CandidateId param:", req.params.candidateId);
+    console.log("🟦 Getting resume for candidate:", req.params.candidateId);
     
     const resume = await resumeService.getResumeByCandidate(req.params.candidateId);
     
     if (!resume) {
-      console.log("⚠️ Controller: Resume not found");
+      console.log("⚠️ Resume not found for candidate:", req.params.candidateId);
       return res.status(404).json({ 
         success: false, 
         message: "Resume not found" 
       });
     }
 
-    // Normalize old Cloudinary URLs to signed browser-openable URL.
     const resumeObj: any = (resume as any).toObject ? (resume as any).toObject() : resume;
-    if (typeof resumeObj.fileUrl === "string" && resumeObj.fileUrl.includes("res.cloudinary.com")) {
-      resumeObj.fileUrl = fixMalformedCloudinaryPdfUrl(resumeObj.fileUrl);
-      const parsed = parseCloudinaryPublicIdAndFormat(resumeObj.fileUrl);
-      if (parsed?.publicId) {
-        resumeObj.fileUrl = buildCloudinarySignedDownloadUrl(parsed.publicId, parsed.format || "pdf");
-        resumeObj.publicFileUrl = buildCloudinaryUrlFromPublicId(parsed.publicId, parsed.format);
-      }
-    }
+
+    const resumeLinks = buildResumeLinks(resumeObj.fileUrl);
+    resumeObj.fileUrl = resumeLinks.sourceUrl;
+    resumeObj.sourceUrl = resumeLinks.sourceUrl;
+    resumeObj.downloadUrl = resumeLinks.downloadUrl;
     
-    console.log("✅ Controller: Resume retrieved successfully");
+    console.log("✅ Resume retrieved successfully");
     res.status(200).json({ success: true, data: resumeObj });
   } catch (error: any) {
-    console.error("❌ Controller Error (get resume):", error.message);
+    console.error("❌ Error getting resume:", error.message);
     res.status(500).json({ 
       success: false, 
       message: error.message || "Error getting resume" 
     });
+  }
+};
+
+export const previewCurrentResumeController = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Please provide a valid token.",
+      });
+    }
+
+    const resume = await resumeService.getResumeByCandidate(req.user.id);
+    if (!resume?.fileUrl) {
+      return res.status(404).json({ success: false, message: "Resume not found" });
+    }
+
+    await streamResumeFromUrl(resume.fileUrl, res, "inline");
+  } catch (error: any) {
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: error?.message || "Error previewing resume",
+      });
+    }
+    res.end();
+  }
+};
+
+export const downloadCurrentResumeController = async (req: Request, res: Response) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required. Please provide a valid token.",
+      });
+    }
+
+    const resume = await resumeService.getResumeByCandidate(req.user.id);
+    if (!resume?.fileUrl) {
+      return res.status(404).json({ success: false, message: "Resume not found" });
+    }
+
+    await streamResumeFromUrl(resume.fileUrl, res, "attachment");
+  } catch (error: any) {
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: error?.message || "Error downloading resume",
+      });
+    }
+    res.end();
   }
 };

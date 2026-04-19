@@ -1,9 +1,20 @@
+// এই ফাইলটি MongoDB connection retry/reuse logic পরিচালনা করে।
 import mongoose from "mongoose";
 import { env } from "./env";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let connectPromise: Promise<typeof mongoose> | null = null;
 
 export const connectDB = async () => {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose;
+  }
+
+  if (connectPromise) {
+    return connectPromise;
+  }
+
+  connectPromise = (async () => {
   const maxAttempts = 3;
   try {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -25,6 +36,7 @@ export const connectDB = async () => {
       }
     }
     console.log("✅ MongoDB connected");
+    return mongoose;
   } catch (error) {
     const err = error as NodeJS.ErrnoException & Record<string, unknown>;
     const isDnsTxtTimeout =
@@ -36,6 +48,12 @@ export const connectDB = async () => {
     }
 
     console.error("❌ Error connecting to MongoDB:", error);
-    process.exit(1);
+    throw error;
   }
+  })().catch((error) => {
+    connectPromise = null;
+    throw error;
+  });
+
+  return connectPromise;
 };
