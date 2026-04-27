@@ -1,9 +1,14 @@
 import { Router } from "express";
 import {
   createCompany,
+  createCompanyReview,
+  deleteCompanyReview,
   getCompanies,
   getPendingCompanies,
+  getCompanyProfile,
   getCompany,
+  moderateCompanyReview,
+  updateCompanyReview,
   updateCompany,
   deleteCompany,
   setCompanyVerification
@@ -19,6 +24,11 @@ router.post("/create", authMiddleware(["recruiter", "admin"]), createCompany);
 
 router.get("/", getCompanies);
 router.get("/pending", authMiddleware(["admin"]), getPendingCompanies);
+router.get("/:id/profile", getCompanyProfile);
+router.post("/:id/reviews", authMiddleware(), createCompanyReview);
+router.put("/:id/reviews", authMiddleware(), updateCompanyReview);
+router.delete("/:id/reviews", authMiddleware(), deleteCompanyReview);
+router.patch("/:id/reviews/:reviewId/moderate", authMiddleware(["admin"]), moderateCompanyReview);
 router.get("/:id", getCompany);
 router.put("/:id", authMiddleware(["recruiter", "admin"]), updateCompany);
 router.put("/:id/verify", authMiddleware(["admin"]), setCompanyVerification);

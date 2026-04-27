@@ -34,7 +34,7 @@ export const getAdminDashboardStats = async () => {
     Job.countDocuments({ status: "closed" }),
     Application.countDocuments(),
     Notification.countDocuments(),
-    Notification.countDocuments({ read: false }),
+    Notification.countDocuments({ isRead: false }),
   ]);
 
   const applicationCounts = await Application.aggregate([
@@ -77,8 +77,8 @@ export const getCandidateDashboardStats = async (userId: string) => {
     availableJobs,
   ] = await Promise.all([
     Application.countDocuments({ candidate: candidateObjectId }),
-    Notification.countDocuments({ user: candidateObjectId, read: false }),
-    Notification.countDocuments({ user: candidateObjectId }),
+    Notification.countDocuments({ userId: candidateObjectId, isRead: false }),
+    Notification.countDocuments({ userId: candidateObjectId }),
     Job.countDocuments({ status: "approved", isApproved: true }),
   ]);
 

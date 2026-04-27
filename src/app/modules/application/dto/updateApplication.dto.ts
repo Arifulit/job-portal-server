@@ -1,5 +1,5 @@
 export interface UpdateApplicationDTO {
-  status?: "Applied" | "Reviewed" | "Accepted" | "Rejected";
+  status?: "Applied" | "Reviewed" | "Rejected" | "Accepted";
   resume?: string;
   coverLetter?: string;
 }

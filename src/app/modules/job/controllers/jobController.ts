@@ -215,6 +215,149 @@ export const getJobById = async (
   }
 };
 
+export const saveJob = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction,
+) => {
+  try {
+    const authUserId = getAuthUserId(req.user);
+    const { id } = req.params;
+
+    if (!authUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    if (!Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid job ID",
+      });
+    }
+
+    const job = await Job.findById(id).select("_id status isApproved").lean();
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    if ((job as any).status !== "approved" || !(job as any).isApproved) {
+      return res.status(400).json({
+        success: false,
+        message: "Only approved jobs can be saved",
+      });
+    }
+
+    await User.findByIdAndUpdate(authUserId, {
+      $addToSet: { savedJobs: (job as any)._id },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Job saved successfully",
+    });
+  } catch (error) {
+    console.error("Error in saveJob:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save job",
+    });
+  }
+};
+
+export const unsaveJob = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction,
+) => {
+  try {
+    const authUserId = getAuthUserId(req.user);
+    const { id } = req.params;
+
+    if (!authUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    if (!Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid job ID",
+      });
+    }
+
+    await User.findByIdAndUpdate(authUserId, {
+      $pull: { savedJobs: new Types.ObjectId(id) },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Job removed from saved list",
+    });
+  } catch (error) {
+    console.error("Error in unsaveJob:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to remove saved job",
+    });
+  }
+};
+
+export const getSavedJobs = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  _next: NextFunction,
+) => {
+  try {
+    const authUserId = getAuthUserId(req.user);
+
+    if (!authUserId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const user = await User.findById(authUserId)
+      .select("savedJobs")
+      .populate({
+        path: "savedJobs",
+        select: "title company location salary jobType status isApproved createdAt",
+      })
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const savedJobs = Array.isArray((user as any).savedJobs)
+      ? (user as any).savedJobs.filter(Boolean)
+      : [];
+
+    return res.status(200).json({
+      success: true,
+      data: savedJobs,
+      count: savedJobs.length,
+    });
+  } catch (error) {
+    console.error("Error in getSavedJobs:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch saved jobs",
+    });
+  }
+};
+
 // Input validation for job creation
 const validateJobInput = (
   data: any,
@@ -533,6 +676,10 @@ const inferExperienceLevel = (
 // Create a new job
 export const createJob: AuthenticatedHandler = async (req, res, next) => {
   try {
+    // Debug logging to help diagnose req.body issues
+    console.log("[createJob] req.body:", req.body);
+    console.log("[createJob] req.file:", req.file);
+
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -545,6 +692,14 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         message: "Only admin and recruiters can create job postings",
+      });
+    }
+
+    // Defensive: If req.body is undefined, return a clear error
+    if (!req.body) {
+      return res.status(400).json({
+        success: false,
+        message: "No form data received. Make sure you are sending form-data and not raw JSON.",
       });
     }
 
@@ -658,6 +813,13 @@ export const createJob: AuthenticatedHandler = async (req, res, next) => {
       data: job,
     });
   } catch (error: any) {
+    if (error?.code === "DUPLICATE_JOB" || error?.status === 409) {
+      return res.status(409).json({
+        success: false,
+        message: error.message || "Same job already exists",
+      });
+    }
+
     next(error);
   }
 };
@@ -728,6 +890,13 @@ export const updateJob: AuthenticatedHandler = async (req, res, next) => {
       data: updatedJob,
     });
   } catch (error: any) {
+    if (error?.code === "DUPLICATE_JOB" || error?.status === 409) {
+      return res.status(409).json({
+        success: false,
+        message: error.message || "Same job already exists",
+      });
+    }
+
     next(error);
   }
 };

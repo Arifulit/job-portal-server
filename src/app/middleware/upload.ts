@@ -59,3 +59,35 @@ export const resumeUpload = multer({
     files: 1,
   },
 });
+
+const allowedAvatarMimeTypes = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+const allowedAvatarExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+
+const avatarFileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const isAllowedMime = allowedAvatarMimeTypes.has(file.mimetype);
+  const isAllowedExt = allowedAvatarExtensions.has(ext);
+
+  if (isAllowedMime || isAllowedExt) {
+    cb(null, true);
+    return;
+  }
+
+  cb(new Error("Only image files (jpg, jpeg, png, webp, gif) are allowed for profile picture upload"), false);
+};
+
+export const avatarUpload = multer({
+  storage,
+  fileFilter: avatarFileFilter,
+  limits: {
+    fileSize: 3 * 1024 * 1024, // 3MB
+    files: 1,
+  },
+});

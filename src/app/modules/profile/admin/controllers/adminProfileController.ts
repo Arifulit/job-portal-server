@@ -1,9 +1,11 @@
 import { Response, Request } from "express";
+import fs from "fs";
 import { AuthenticatedRequest } from "../../../../../types/express";
 import * as adminService from "../services/adminProfileService";
 import bcrypt from "bcryptjs";
 import { AdminProfile } from "../models/AdminProfile";
 import { User } from "../../../auth/models/User";
+import cloudinary from "../../../../config/cloudinary";
 
 const toIdString = (value: unknown): string => {
   if (!value) return "";
@@ -20,6 +22,45 @@ const getAuthUserId = (req: Request | AuthenticatedRequest): string => {
 
 const isAdminRole = (role: unknown): boolean => {
   return String(role || "").toLowerCase().trim() === "admin";
+};
+
+const getUploadedAvatarFile = (req: Request): Express.Multer.File | undefined => {
+  const uploadedFile = (req as any).file as Express.Multer.File | undefined;
+  const uploadedFiles = (req as any).files as
+    | Record<string, Express.Multer.File[]>
+    | Express.Multer.File[]
+    | undefined;
+
+  if (uploadedFile) {
+    return uploadedFile;
+  }
+
+  if (Array.isArray(uploadedFiles)) {
+    return uploadedFiles[0];
+  }
+
+  return (
+    uploadedFiles?.avatar?.[0] ||
+    uploadedFiles?.profilePicture?.[0] ||
+    uploadedFiles?.image?.[0] ||
+    uploadedFiles?.file?.[0]
+  );
+};
+
+const uploadAvatarToCloudinary = async (file: Express.Multer.File): Promise<string> => {
+  try {
+    const cloudResult = await cloudinary.uploader.upload(file.path, {
+      folder: "job-portal/profile-avatars",
+      resource_type: "image",
+      type: "upload",
+    });
+
+    return cloudResult.secure_url || cloudResult.url;
+  } finally {
+    if (file.path) {
+      fs.unlink(file.path, () => {});
+    }
+  }
 };
 
 // Create initial admin if not exists
@@ -69,6 +110,12 @@ interface CreateAdminRequest extends Request {
 
 export const createAdminController = async (req: CreateAdminRequest, res: Response) => {
   try {
+    const avatarFile = getUploadedAvatarFile(req);
+    let uploadedAvatarUrl: string | undefined;
+    if (avatarFile) {
+      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
+
     const { name, email, password, phone } = req.body;
     
     // Validate required fields
@@ -94,7 +141,8 @@ export const createAdminController = async (req: CreateAdminRequest, res: Respon
       email,
       password, // Will be hashed by pre-save hook
       role: "Admin",
-      phone: phone || ""
+      phone: phone || "",
+      avatar: uploadedAvatarUrl || "",
     });
     
     // Save the admin (this will trigger the pre-save hook)
@@ -193,6 +241,10 @@ export const updateAdminController = async (req: AuthenticatedRequest, res: Resp
     }
 
     const updateData = { ...req.body };
+    const avatarFile = getUploadedAvatarFile(req);
+    if (avatarFile) {
+      updateData.avatar = await uploadAvatarToCloudinary(avatarFile);
+    }
     const normalizedBiodata = updateData.biodata ?? updateData.bio;
     const normalizedLocation = updateData.location ?? updateData.address;
 

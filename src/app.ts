@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import session from "express-session";
 import router from "./app/routes";
+import passport from "./app/config/passport";
 import { env } from "./app/config/env";
 import { errorHandler } from "./app/middleware/errorHandler";
 import notFound from "./app/middleware/notFound";
@@ -31,6 +32,11 @@ app.use(
     },
   })
 );
+
+
+// Passport middleware
+app.use(passport.initialize());
+app.use(passport.session()); // 🔥 Added for Google OAuth session support
 
 // Allowed origins
 const allowedOrigins = [

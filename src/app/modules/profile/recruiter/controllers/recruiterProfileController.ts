@@ -1,24 +1,79 @@
 import { Request, Response } from "express";
+import fs from "fs";
 import * as recruiterProfileService from "../services/recruiterProfileService";
+import cloudinary from "../../../../config/cloudinary";
+import { User } from "../../../auth/models/User";
 
 const formatRecruiterProfileResponse = (profile: any) => {
   if (!profile) return profile;
 
   return {
     ...profile,
+    avatar: profile.avatar ?? profile.user?.avatar ?? "",
     biodata: profile.biodata ?? profile.bio ?? "",
     location: profile.location ?? "",
   };
 };
 
+const getUploadedAvatarFile = (req: Request): Express.Multer.File | undefined => {
+  const uploadedFile = (req as any).file as Express.Multer.File | undefined;
+  const uploadedFiles = (req as any).files as
+    | Record<string, Express.Multer.File[]>
+    | Express.Multer.File[]
+    | undefined;
+
+  if (uploadedFile) {
+    return uploadedFile;
+  }
+
+  if (Array.isArray(uploadedFiles)) {
+    return uploadedFiles[0];
+  }
+
+  return (
+    uploadedFiles?.avatar?.[0] ||
+    uploadedFiles?.profilePicture?.[0] ||
+    uploadedFiles?.image?.[0] ||
+    uploadedFiles?.file?.[0]
+  );
+};
+
+const uploadAvatarToCloudinary = async (file: Express.Multer.File): Promise<string> => {
+  try {
+    const cloudResult = await cloudinary.uploader.upload(file.path, {
+      folder: "job-portal/profile-avatars",
+      resource_type: "image",
+      type: "upload",
+    });
+
+    return cloudResult.secure_url || cloudResult.url;
+  } finally {
+    if (file.path) {
+      fs.unlink(file.path, () => {});
+    }
+  }
+};
+
 export const createRecruiterProfileController = async (req: Request, res: Response) => {
   try {
+    const avatarFile = getUploadedAvatarFile(req);
+    let uploadedAvatarUrl: string | undefined;
+    if (avatarFile) {
+      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
+
     // Add the user ID from the authenticated request to the profile data
     const profileData = {
       ...req.body,
       user: req.user?.id
     };
+
     const profile = await recruiterProfileService.createRecruiterProfile(profileData);
+
+    if (uploadedAvatarUrl && req.user?.id) {
+      await User.findByIdAndUpdate(req.user.id, { $set: { avatar: uploadedAvatarUrl } }, { new: false });
+    }
+
     res.status(201).json({ success: true, data: formatRecruiterProfileResponse(profile) });
   } catch (error) {
     console.error('Error creating recruiter profile:', error);
@@ -92,7 +147,12 @@ export const getRecruiterProfileController = async (req: Request, res: Response)
 export const updateRecruiterProfileController = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id;
-    const updateData = req.body;
+    const updateData = { ...(req.body || {}) };
+
+    const avatarFile = getUploadedAvatarFile(req);
+    if (avatarFile) {
+      updateData.avatar = await uploadAvatarToCloudinary(avatarFile);
+    }
 
     if (!userId) {
       return res.status(401).json({ 

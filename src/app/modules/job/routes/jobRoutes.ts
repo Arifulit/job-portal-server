@@ -8,6 +8,9 @@ import {
   getJobById, 
   deleteJob,
   closeJob,
+  saveJob,
+  unsaveJob,
+  getSavedJobs,
   AuthenticatedHandler,
   getPendingJobs,
   getApprovedJobs
@@ -16,6 +19,7 @@ import { getJobApplications } from "../../application/controllers/applicationCon
 import { authMiddleware, optionalAuth } from "../../../middleware/auth";
 import adminJobRoutes from "./adminJobRoutes";
 import { adminGetAllJobs } from "../controllers/jobAdminController";
+import { imageUpload } from "../../../middleware/upload";
 
 const router = Router();
 
@@ -51,6 +55,13 @@ router.get(
   handleRoute(getAllJobs)
 );
 
+// Candidate-facing job list: only approved jobs from all recruiters.
+router.get(
+  "/candidate/jobs",
+  authMiddleware(["candidate", "admin"]) as RequestHandler,
+  handleRoute(getApprovedJobs)
+);
+
 // Backward-compatible pagination alias:
 // GET /api/v1/jobs/page=1&limit=10
 router.get(
@@ -68,14 +79,41 @@ router.get('/all', authMiddleware(["admin", "recruiter"]) as RequestHandler, han
 // router.get("/admin/jobs/all", authMiddleware(["admin"]) as RequestHandler, handleRoute(adminGetAllJobs));
 
 router.get(
+  "/saved/me",
+  authMiddleware() as RequestHandler,
+  handleRoute(getSavedJobs)
+);
+
+router.post(
+  "/:id/save",
+  authMiddleware() as RequestHandler,
+  handleRoute(saveJob)
+);
+
+router.delete(
+  "/:id/save",
+  authMiddleware() as RequestHandler,
+  handleRoute(unsaveJob)
+);
+
+router.get(
   "/:id",
   optionalAuth,
   handleRoute(getJobById)
 );
 
+
+// Support both form-data (with file) and raw JSON for job creation
 router.post(
-  "/create", 
+  "/create",
   authMiddleware(["admin", "recruiter"]) as RequestHandler,
+  (req, res, next) => {
+    const contentType = req.headers["content-type"] || "";
+    if (contentType.includes("multipart/form-data")) {
+      return imageUpload.single("logo")(req, res, next);
+    }
+    next();
+  },
   handleRoute(createJob)
 );
 

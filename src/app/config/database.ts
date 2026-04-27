@@ -39,12 +39,17 @@ export const connectDB = async () => {
     return mongoose;
   } catch (error) {
     const err = error as NodeJS.ErrnoException & Record<string, unknown>;
-    const isDnsTxtTimeout =
-      err?.code === "ETIMEOUT" && err?.syscall === "queryTxt" && typeof err?.hostname === "string";
+    const isAtlasSrvLookupError =
+      (err?.code === "ETIMEOUT" || err?.code === "ECONNREFUSED") &&
+      (err?.syscall === "queryTxt" || err?.syscall === "querySrv") &&
+      typeof err?.hostname === "string";
 
-    if (isDnsTxtTimeout && env.DB_URI.startsWith("mongodb+srv://")) {
-      console.error("MongoDB Atlas DNS TXT lookup timed out.");
-      console.error("Try switching DNS to 8.8.8.8/1.1.1.1 or using a non-SRV MongoDB URI.");
+    if (isAtlasSrvLookupError && env.DB_URI.startsWith("mongodb+srv://")) {
+      console.error("MongoDB Atlas SRV lookup failed.");
+      console.error("Fix options:");
+      console.error("1) Use local MongoDB URL: mongodb://localhost:27017/job-portal-api");
+      console.error("2) Switch DNS to 8.8.8.8 or 1.1.1.1");
+      console.error("3) Use Atlas non-SRV MongoDB URI");
     }
 
     console.error("❌ Error connecting to MongoDB:", error);

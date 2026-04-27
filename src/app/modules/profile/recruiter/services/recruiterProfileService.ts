@@ -11,14 +11,14 @@ export const createRecruiterProfile = async (data: CreateRecruiterProfileDTO) =>
 
 export const getRecruiterProfile = async (userId: string) => {
   return await RecruiterProfile.findOne({ user: userId })
-    .populate("user", "name email role")
+    .populate("user", "name email role avatar")
     .populate("agency")
     .populate("company")
     .lean();
 };
 
 export const updateRecruiterProfile = async (userId: string, data: any) => {
-  const { name, email, ...rest } = data || {};
+  const { name, email, avatar, ...rest } = data || {};
 
   // Name/email are stored in User model, so update those separately.
   const userUpdates: Record<string, string> = {};
@@ -27,6 +27,9 @@ export const updateRecruiterProfile = async (userId: string, data: any) => {
   }
   if (typeof email === "string" && email.trim()) {
     userUpdates.email = email.trim().toLowerCase();
+  }
+  if (typeof avatar === "string" && avatar.trim()) {
+    userUpdates.avatar = avatar.trim();
   }
   if (Object.keys(userUpdates).length > 0) {
     await User.findByIdAndUpdate(userId, { $set: userUpdates }, { new: false });
@@ -50,7 +53,7 @@ export const updateRecruiterProfile = async (userId: string, data: any) => {
     { $set: profileUpdates },
     { new: true, runValidators: true }
   )
-  .populate('user', 'name email role')
+  .populate('user', 'name email role avatar')
   .populate('agency')
   .populate('company')
   .lean();

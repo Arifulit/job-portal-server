@@ -94,11 +94,12 @@ export const authMiddleware = (allowedRoles?: string[]): RequestHandler => {
 
         const userRole = normalizeRole(resolvedRoleRaw);
         
+        // Spread decoded first, then force normalized auth fields so token casing cannot bypass role checks.
         req.user = {
+          ...decoded,
           id: decoded.id,
           email: resolvedEmail,
           role: userRole as 'admin' | 'recruiter' | 'candidate',
-          ...decoded
         };
 
         // Ensure user exists before accessing properties
@@ -175,10 +176,10 @@ export const optionalAuth: RequestHandler = (req, res, next) => {
   try {
     const decoded = jwt.verify(token, secret) as any;
     req.user = {
+      ...decoded,
       id: decoded.id,
       email: decoded.email || '',
       role: normalizeRole(decoded.role || decoded?.user?.role),
-      ...decoded
     };
     authDebugLog("🔐 Optional auth - Authenticated user:", req.user?.id);
   } catch (_error) {

@@ -1,8 +1,10 @@
 // এই controller auth request গ্রহণ করে service call করে response return করে।
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { Types } from "mongoose";
 import * as authService from "../services/authService";
 import { User } from "../models/User";
+import passport from "../../../config/passport";
+import { env } from "../../../config/env";
 import { CandidateProfile } from "../../profile/candidate/models/CandidateProfile";
 import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfile";
 import { AdminProfile } from "../../profile/admin/models/AdminProfile";
@@ -10,9 +12,34 @@ import { RecruitmentAgency } from "../../agency/models/recruitmentAgency.model";
 import Company from "../../company/models/Company";
 
 const ACCESS_TTL = "24h";
-const REFRESH_TTL = "30d";
 const REFRESH_COOKIE_NAME = "refreshToken";
 const REFRESH_COOKIE_MAXAGE = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+const hasGoogleOAuthConfig = Boolean(
+  env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CALLBACK_URL,
+);
+
+const mask = (value: string, visiblePrefix = 6, visibleSuffix = 4) => {
+  if (!value) return "";
+  if (value.length <= visiblePrefix + visibleSuffix) return `${value.slice(0, 2)}***`;
+  return `${value.slice(0, visiblePrefix)}***${value.slice(-visibleSuffix)}`;
+};
+
+const decodeOAuthRedirectState = (state: unknown): string => {
+  if (typeof state !== "string" || !state) {
+    return "/";
+  }
+
+  try {
+    const decodedPath = Buffer.from(state, "base64url").toString("utf8").trim();
+    if (decodedPath.startsWith("/")) {
+      return decodedPath;
+    }
+  } catch (_error) {
+    // ignore decode errors and return fallback path
+  }
+
+  return "/";
+};
 
 const toAuthUserPayload = (user: any) => {
   const base = {
@@ -20,6 +47,7 @@ const toAuthUserPayload = (user: any) => {
     id: user._id,
     name: user.name,
     email: user.email,
+    avatar: user.avatar ?? "",
     role: user.role,
     isEmailVerified: user.isEmailVerified,
     isSuspended: user.isSuspended,
@@ -198,7 +226,7 @@ export const register = async (req: Request, res: Response) => {
       { id: userId, role: user.role, email: user.email },
       ACCESS_TTL,
     );
-    const refreshToken = authService.signToken({ id: userId }, REFRESH_TTL);
+    const refreshToken = authService.generateRefreshToken(userId);
 
     // Set refresh token cookie
     res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
@@ -249,7 +277,7 @@ export const login = async (req: Request, res: Response) => {
       ACCESS_TTL,
     );
 
-    const refreshToken = authService.signToken({ id: userId }, REFRESH_TTL);
+    const refreshToken = authService.generateRefreshToken(userId);
 
     // Set refresh token cookie
     res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
@@ -275,6 +303,101 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
+export const googleAuth = (req: Request, res: Response, next: NextFunction) => {
+  if (!hasGoogleOAuthConfig) {
+    return res.status(503).json({
+      success: false,
+      message:
+        "Google login is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL.",
+    });
+  }
+
+  const requestedRedirect =
+    typeof req.query.redirect === "string" && req.query.redirect.startsWith("/")
+      ? req.query.redirect
+      : "/";
+
+  const state = Buffer.from(requestedRedirect, "utf8").toString("base64url");
+
+  passport.authenticate("google", {
+    scope: ["email", "profile"],
+    session: false,
+    state,
+  })(req, res, next);
+};
+
+export const googleDebug = (_req: Request, res: Response) => {
+  const configuredCallbackUrl = env.GOOGLE_CALLBACK_URL ?? "";
+  return res.status(200).json({
+    success: true,
+    googleOAuth: {
+      configured: hasGoogleOAuthConfig,
+      callbackUrl: configuredCallbackUrl,
+      clientIdMasked: env.GOOGLE_CLIENT_ID ? mask(env.GOOGLE_CLIENT_ID, 10, 10) : "",
+      // Helpful hints for common console mismatch issues
+      expectedAuthorizedRedirectUris: configuredCallbackUrl ? [configuredCallbackUrl] : [],
+      notes: [
+        "Google Console -> Credentials -> OAuth Client (Web application) must include the callbackUrl in Authorized redirect URIs (exact match).",
+        "If Consent Screen is Testing, add your Gmail to Test users.",
+        "If you have multiple OAuth clients, ensure GOOGLE_CLIENT_ID matches the client you edited in Console.",
+      ],
+    },
+  });
+};
+
+export const googleCallback = (req: Request, res: Response, next: NextFunction) => {
+  if (!hasGoogleOAuthConfig) {
+    return res.status(503).json({
+      success: false,
+      message:
+        "Google login is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL.",
+    });
+  }
+
+  passport.authenticate(
+    "google",
+    { session: false },
+    async (error: Error | null, user: any) => {
+      if (error || !user) {
+        return res.status(401).json({
+          success: false,
+          message: error?.message || "Google authentication failed",
+        });
+      }
+
+      const userId = user._id.toString();
+      const accessToken = authService.signToken(
+        { id: userId, role: user.role, email: user.email },
+        ACCESS_TTL,
+      );
+      const refreshToken = authService.generateRefreshToken(userId);
+
+      res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: REFRESH_COOKIE_MAXAGE,
+      });
+
+      if (req.query.mode === "json") {
+        return res.status(200).json({
+          success: true,
+          data: {
+            user: toAuthUserPayload(user),
+            accessToken,
+            refreshToken,
+          },
+        });
+      }
+
+      const frontendUrl = new URL(env.FRONTEND_URL);
+      frontendUrl.pathname = decodeOAuthRedirectState(req.query.state);
+      frontendUrl.searchParams.set("accessToken", accessToken);
+      return res.redirect(frontendUrl.toString());
+    },
+  )(req, res, next);
+};
+
 export const refresh = async (req: Request, res: Response) => {
   try {
     const refreshToken =
@@ -287,7 +410,7 @@ export const refresh = async (req: Request, res: Response) => {
       });
     }
 
-    const decoded: any = authService.verifyToken(refreshToken);
+    const decoded: any = authService.verifyRefreshToken(refreshToken);
     const userId = decoded.id;
 
     if (!userId) {
@@ -311,7 +434,7 @@ export const refresh = async (req: Request, res: Response) => {
       ACCESS_TTL,
     );
 
-    const newRefreshToken = authService.signToken({ id: userId }, REFRESH_TTL);
+    const newRefreshToken = authService.generateRefreshToken(userId);
 
     // Update refresh token cookie
     res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, {
@@ -411,6 +534,7 @@ export const me = async (req: Request, res: Response) => {
       id: user._id,
       name: user.name,
       email: user.email,
+      avatar: (user as any).avatar ?? "",
       role: user.role,
       ...(user.role === "recruiter"
         ? {

@@ -20,7 +20,7 @@ import {
 
 const router = Router();
 
-// Get all users (both candidates and recruiters)
+// Get all users (including admins, recruiters, and candidates)
 router.get("/", authMiddleware(["admin"]), getAllUsersController as any);
 
 // Get all users from database (all roles)

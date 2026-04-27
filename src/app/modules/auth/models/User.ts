@@ -7,8 +7,12 @@ import bcrypt from 'bcrypt';
 export interface IUser extends Document {
   name: string;
   email: string;
-  password: string;
+  password?: string;
+  avatar?: string;
+  authProvider?: "local" | "google";
+  googleId?: string;
   role: 'candidate' | 'recruiter' | 'admin';
+  savedJobs?: mongoose.Types.ObjectId[];
   isRecruiterApproved?: boolean;
   recruiterApprovedAt?: Date;
   recruiterApprovedBy?: mongoose.Types.ObjectId;
@@ -34,13 +38,33 @@ const userSchema = new Schema<IUser>(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      required: false,
       minlength: 6,
+      select: false,
+    },
+    avatar: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    authProvider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: {
+      type: String,
+      sparse: true,
+      trim: true,
     },
     role: {
       type: String,
       enum: ['candidate', 'recruiter', 'admin'],
       default: 'candidate',
+    },
+    savedJobs: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'Job' }],
+      default: [],
     },
     isRecruiterApproved: {
       type: Boolean,
@@ -81,6 +105,10 @@ userSchema.pre('save', async function (next) {
   }
 
   // শুধুমাত্র যখন password পরিবর্তিত হয় তখনই hash করা হবে
+  if (!this.password) {
+    return next();
+  }
+
   if (!this.isModified('password')) {
     return next();
   }
@@ -96,6 +124,9 @@ userSchema.pre('save', async function (next) {
 
 // Password verify করার method
 userSchema.methods.isPasswordCorrect = async function (password: string) {
+  if (!this.password) {
+    return false;
+  }
   return await bcrypt.compare(password, this.password);
 };
 

@@ -1,5 +1,10 @@
 {
   "version": 2,
+  "functions": {
+    "api/index.ts": {
+      "includeFiles": "node_modules/cloudinary/lib/utils/analytics/**"
+    }
+  },
   "builds": [
     { "src": "api/index.ts", "use": "@vercel/node" }
   ],

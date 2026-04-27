@@ -3,10 +3,16 @@ import { Request, Response, RequestHandler, NextFunction } from "express";
 import * as applicationService from "../services/applicationService";
 import { Job } from "../../job/models/Job";
 import { Application } from "../models/Application";
+import { User } from "../../auth/models/User";
 import { Types, Document } from "mongoose";
 import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfile";
 import { CandidateProfile } from "../../profile/candidate/models/CandidateProfile";
 import { Resume } from "../../profile/candidate/models/Resume";
+import { createNotification } from "../../notification/services/notificationService";
+import {
+  sendApplicationStatusUpdatedEmail,
+  sendApplicationSubmittedEmail,
+} from "../services/applicationEmailService";
 import cloudinary from "../../../config/cloudinary";
 import { env } from "../../../config/env";
 import fs from "fs";
@@ -236,6 +242,15 @@ const getLatestCandidateResumeUrl = async (
   return byProfileId?.fileUrl;
 };
 
+const getRecruiterOwnedJobIds = async (userId: string): Promise<string[]> => {
+  if (!userId) {
+    return [];
+  }
+
+  const jobs = await Job.find({ createdBy: userId }).select("_id").lean();
+  return jobs.map((job: any) => String(job._id));
+};
+
 export type AuthenticatedRequest = Request & {
   user?: {
     id: string;
@@ -265,7 +280,7 @@ export const applyJob = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const targetJob = await Job.findById(jobToApply)
-      .select("_id status isApproved createdBy")
+      .select("_id title status isApproved createdBy")
       .lean();
 
     if (!targetJob) {
@@ -359,6 +374,29 @@ export const applyJob = async (req: AuthenticatedRequest, res: Response) => {
     const applicationObj: any = (application as any).toObject
       ? (application as any).toObject()
       : application;
+
+    const candidateUser = await User.findById(req.user.id).select("name email").lean();
+    if (candidateUser?.email) {
+      try {
+        await sendApplicationSubmittedEmail({
+          to: candidateUser.email,
+          candidateName: candidateUser.name,
+          jobTitle: (targetJob as any)?.title,
+        });
+      } catch (mailError: any) {
+        console.warn("Failed to send application confirmation email:", mailError?.message || mailError);
+      }
+    }
+
+    const recruiterId = toIdString((targetJob as any).createdBy);
+    if (recruiterId && recruiterId !== req.user.id) {
+      await createNotification({
+        userId: recruiterId,
+        type: "Application",
+        message: "A new application has been submitted for one of your jobs.",
+        relatedId: (application as any)._id,
+      });
+    }
 
     // ✅ Response-এ clean public URL দাও
     const resumeLinks = buildResumeLinks(applicationObj?.resume);
@@ -473,15 +511,15 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
     const { id } = req.params;
     const { status } = req.body;
     const userRole = req.user.role;
+    const userId = req.user.id || toIdString((req.user as any)?._id) || "";
 
-    // Case-insensitive status normalize - recruiters can set: Applied, Reviewed, Shortlisted, Interview, Hired, Rejected
-    const statusMap: Record<string, "Applied" | "Reviewed" | "Shortlisted" | "Interview" | "Hired" | "Rejected"> = {
+    // Case-insensitive status normalize - recruiters can set: Applied, Reviewed, Rejected, Accepted
+    const statusMap: Record<string, "Applied" | "Reviewed" | "Rejected" | "Accepted"> = {
       applied: "Applied",
       reviewed: "Reviewed",
-      shortlisted: "Shortlisted",
-      interview: "Interview",
-      hired: "Hired",
       rejected: "Rejected",
+      accepted: "Accepted",
+      hired: "Accepted",
     };
 
     const normalizedStatus =
@@ -492,13 +530,13 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
     if (status && !normalizedStatus) {
       return res.status(400).json({
         success: false,
-        message: "Invalid status. Must be one of: Applied, Reviewed, Shortlisted, Interview, Hired, Rejected",
+        message: "Invalid status. Must be one of: Applied, Reviewed, Rejected, Accepted",
       });
     }
 
     const application = await Application.findById(id).populate({
       path: "job",
-      select: "createdBy company",
+      select: "createdBy company title",
       options: { lean: true },
     });
 
@@ -510,9 +548,52 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
       return res.status(404).json({ success: false, message: "Associated job not found" });
     }
 
-    // ✅ Any recruiter or admin can update application status
+    // Admin can update any application. Recruiter can update only applications of their own jobs.
+    if (userRole === "recruiter") {
+      const jobCreatorId = toIdString((application as any).job?.createdBy);
+      if (!jobCreatorId || jobCreatorId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update applications for jobs you created",
+        });
+      }
+    }
+
+    if (userRole !== "admin" && userRole !== "recruiter") {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to update this application",
+      });
+    }
+
     application.status = normalizedStatus || application.status;
     await application.save();
+
+    const candidateId = toIdString((application as any).candidate);
+    if (candidateId) {
+      const candidateUser = await User.findById(candidateId).select("name email").lean();
+      if (candidateUser?.email) {
+        try {
+          await sendApplicationStatusUpdatedEmail({
+            to: candidateUser.email,
+            candidateName: candidateUser.name,
+            status: application.status as "Applied" | "Reviewed" | "Rejected" | "Accepted",
+            jobTitle: (application as any).job?.title,
+          });
+        } catch (mailError: any) {
+          console.warn("Failed to send application status update email:", mailError?.message || mailError);
+        }
+      }
+    }
+
+    if (candidateId) {
+      await createNotification({
+        userId: candidateId,
+        type: "Application",
+        message: `Your application status has been updated to ${application.status}.`,
+        relatedId: (application as any)._id,
+      });
+    }
 
     const updatedApp = await Application.findById(application._id)
       .populate("candidate", "name email")
@@ -585,6 +666,14 @@ export const getJobApplications = async (req: AuthenticatedRequest, res: Respons
 
     // Recruiter নিজের company-র jobs দেখতে পারবে
     if (userRole === "recruiter") {
+      const jobCreatorId = toIdString((job as any).createdBy);
+      if (!jobCreatorId || jobCreatorId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only view applications for jobs you created",
+        });
+      }
+
       let applications = await applicationService.getApplicationsByJob(jobId);
       if (status) applications = applications.filter((app: any) => app.status === status);
       return res.status(200).json({ success: true, data: applications });
@@ -668,6 +757,27 @@ export const getJobAllApplications = async (req: AuthenticatedRequest, res: Resp
   }
 
   try {
+    if (req.user.role === "recruiter") {
+      const ownedJobIds = await getRecruiterOwnedJobIds(req.user.id);
+      const applications = ownedJobIds.length > 0
+        ? await Application.find({ job: { $in: ownedJobIds } })
+            .populate("candidate", "name email")
+            .populate({
+              path: "job",
+              select: "title company createdBy",
+              populate: { path: "createdBy", select: "name email" },
+            })
+            .sort({ createdAt: -1 })
+            .lean()
+        : [];
+
+      return res.status(200).json({
+        success: true,
+        data: applications,
+        count: applications.length,
+      });
+    }
+
     const applications = await Application.find({})
       .populate("candidate", "name email")
       .populate({
@@ -752,7 +862,7 @@ export const getApplicationsByUser = async (
     const requesterId = req.user?.id || "";
     const role = req.user?.role;
 
-    if (requesterId !== userId && !["admin", "recruiter"].includes(role || "")) {
+    if (requesterId !== userId && role !== "admin") {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
@@ -801,7 +911,7 @@ export const getApplicationCountByUser = async (
     const requesterId = req.user?.id || "";
     const role = req.user?.role;
 
-    if (requesterId !== userId && !["admin", "recruiter"].includes(role || "")) {
+    if (requesterId !== userId && role !== "admin") {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 

@@ -113,10 +113,20 @@ export const getAllRecruiters = async () => {
 
 export const updateUserRole = async (userId: string, newRole: string) => {
   try {
-    // Validate the new role
-    const validRoles = ['super_admin', 'admin', 'recruiter', 'candidate'];
-    if (!validRoles.includes(newRole.toLowerCase())) {
-      throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+    const normalizedRoleInput = String(newRole || "").toLowerCase().trim();
+    const roleAliasMap: Record<string, "admin" | "recruiter" | "candidate"> = {
+      admin: "admin",
+      super_admin: "admin",
+      recruiter: "recruiter",
+      recuriter: "recruiter",
+      employer: "recruiter",
+      candidate: "candidate",
+      user: "candidate",
+    };
+
+    const normalizedRole = roleAliasMap[normalizedRoleInput];
+    if (!normalizedRole) {
+      throw new Error("Invalid role. Must be one of: admin, recruiter, candidate");
     }
 
     const user = await User.findById(userId);
@@ -130,7 +140,7 @@ export const updateUserRole = async (userId: string, newRole: string) => {
     }
 
     // Update the role
-    user.role = newRole.toLowerCase() as any;
+    user.role = normalizedRole;
     await user.save();
 
     // Return user data without sensitive information
@@ -138,7 +148,7 @@ export const updateUserRole = async (userId: string, newRole: string) => {
     
     return {
       success: true,
-      message: `User role updated to ${newRole} successfully`,
+      message: `User role updated to ${normalizedRole} successfully`,
       data: userWithoutSensitiveData
     };
   } catch (error) {
@@ -152,29 +162,28 @@ export const updateUserRole = async (userId: string, newRole: string) => {
 export const getAllUsers = async () => {
   try {
     const allUsers = await getAllUsersFromDB();
-    
-    // Filter out admin users
-    const nonAdminUsers = allUsers.filter(user => user.role !== 'admin');
-    
-    // Count users by role (excluding admins)
-    const roleCounts = nonAdminUsers.reduce((acc, user) => {
+
+    // Count users by role (including admins)
+    const roleCounts = allUsers.reduce((acc, user) => {
       acc[user.role] = (acc[user.role] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
-    // Separate users by role (excluding admins)
-    const candidates = nonAdminUsers.filter(user => user.role === 'candidate');
-    const recruiters = nonAdminUsers.filter(user => user.role === 'recruiter');
+    // Separate users by role
+    const candidates = allUsers.filter(user => user.role === 'candidate');
+    const recruiters = allUsers.filter(user => user.role === 'recruiter');
+    const admins = allUsers.filter(user => user.role === 'admin');
 
     const result: any = {
-      totalUsers: nonAdminUsers.length,
-      ...roleCounts,  // This will include candidate: Y, recruiter: Z
-      allUsers: nonAdminUsers
+      totalUsers: allUsers.length,
+      ...roleCounts,
+      allUsers
     };
 
     // Only include non-empty arrays in the response
     if (candidates.length > 0) result.candidates = candidates;
     if (recruiters.length > 0) result.recruiters = recruiters;
+    if (admins.length > 0) result.admins = admins;
 
     return result;
   } catch (error) {

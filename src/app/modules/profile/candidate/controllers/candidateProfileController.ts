@@ -1,7 +1,9 @@
 import { Request, Response } from "express";
+import fs from "fs";
 import * as candidateProfileService from "../services/candidateProfileService";
 import { CandidateProfile } from "../models/CandidateProfile";
 import { User } from "../../../auth/models/User";
+import cloudinary from "../../../../config/cloudinary";
 
 const buildCandidateUpdatePayload = (body: Record<string, any>) => {
   const payload = { ...body };
@@ -32,6 +34,7 @@ const formatCandidateProfileResponse = (profile: any) => {
     ...profile,
     name: profile.name ?? userProfile?.name ?? "",
     email: profile.email ?? userProfile?.email ?? "",
+    avatar: profile.avatar ?? userProfile?.avatar ?? "",
     phone: profile.phone ?? "",
     bio: profile.bio ?? profile.biodata ?? "",
     biodata: profile.biodata ?? profile.bio ?? "",
@@ -53,6 +56,45 @@ const getAuthUserRole = (req: Request): string => {
   return String(user?.role || "").toLowerCase().trim();
 };
 
+const getUploadedAvatarFile = (req: Request): Express.Multer.File | undefined => {
+  const uploadedFile = (req as any).file as Express.Multer.File | undefined;
+  const uploadedFiles = (req as any).files as
+    | Record<string, Express.Multer.File[]>
+    | Express.Multer.File[]
+    | undefined;
+
+  if (uploadedFile) {
+    return uploadedFile;
+  }
+
+  if (Array.isArray(uploadedFiles)) {
+    return uploadedFiles[0];
+  }
+
+  return (
+    uploadedFiles?.avatar?.[0] ||
+    uploadedFiles?.profilePicture?.[0] ||
+    uploadedFiles?.image?.[0] ||
+    uploadedFiles?.file?.[0]
+  );
+};
+
+const uploadAvatarToCloudinary = async (file: Express.Multer.File): Promise<string> => {
+  try {
+    const cloudResult = await cloudinary.uploader.upload(file.path, {
+      folder: "job-portal/profile-avatars",
+      resource_type: "image",
+      type: "upload",
+    });
+
+    return cloudResult.secure_url || cloudResult.url;
+  } finally {
+    if (file.path) {
+      fs.unlink(file.path, () => {});
+    }
+  }
+};
+
 export const createCandidateProfileController = async (req: Request, res: Response) => {
   try {
     console.log("🟦 Controller: Creating/Updating profile");
@@ -69,6 +111,13 @@ export const createCandidateProfileController = async (req: Request, res: Respon
     }
 
     const userId = req.user.id;
+    const avatarFile = getUploadedAvatarFile(req);
+    let uploadedAvatarUrl: string | undefined;
+
+    if (avatarFile) {
+      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
+
     console.log("🟦 User authenticated, userId:", userId);
     
     // Prepare profile data with authenticated user ID
@@ -95,9 +144,15 @@ export const createCandidateProfileController = async (req: Request, res: Respon
       .populate("resume")
       .populate({ path: "user", select: "-password -__v" })
       .lean();
+
+    if (uploadedAvatarUrl) {
+      await User.findByIdAndUpdate(userId, { $set: { avatar: uploadedAvatarUrl } }, { new: false });
+    }
+
+    const latestProfile = await candidateProfileService.getCandidateProfile(userId);
     
     console.log("✅ Controller: Profile created/updated successfully");
-    res.status(201).json({ success: true, data: formatCandidateProfileResponse(profile) });
+    res.status(201).json({ success: true, data: formatCandidateProfileResponse(latestProfile || profile) });
   } catch (error: any) {
     console.error("❌ Controller Error (create):", error.message);
     
@@ -246,6 +301,13 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
     }
 
     const userId = req.user.id;
+    const avatarFile = getUploadedAvatarFile(req);
+    let uploadedAvatarUrl: string | undefined;
+
+    if (avatarFile) {
+      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
+
     console.log("🟦 User authenticated, userId:", userId);
     
     // Check if profile exists
@@ -284,9 +346,12 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
       const userUpdates: Record<string, string> = {};
       if (typeof updatePayload.name === "string") userUpdates.name = updatePayload.name.trim();
       if (typeof updatePayload.email === "string") userUpdates.email = updatePayload.email.trim().toLowerCase();
+      if (uploadedAvatarUrl) userUpdates.avatar = uploadedAvatarUrl;
       if (Object.keys(userUpdates).length > 0) {
         await User.findByIdAndUpdate(userId, { $set: userUpdates }, { new: false });
       }
+    } else if (uploadedAvatarUrl) {
+      await User.findByIdAndUpdate(userId, { $set: { avatar: uploadedAvatarUrl } }, { new: false });
     }
     
     // Get the updated profile
@@ -323,16 +388,23 @@ export const updateCandidateProfileController = async (req: Request, res: Respon
     console.log("🟦 UserId param:", req.params.userId);
     const updatePayload = buildCandidateUpdatePayload(req.body || {});
     console.log("🟦 Update data:", updatePayload);
+
+    const avatarFile = getUploadedAvatarFile(req);
+    let uploadedAvatarUrl: string | undefined;
+    if (avatarFile) {
+      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
     
     await candidateProfileService.updateCandidateProfile(
       req.params.userId,
       updatePayload
     );
 
-    if (updatePayload.name !== undefined || updatePayload.email !== undefined) {
+    if (updatePayload.name !== undefined || updatePayload.email !== undefined || uploadedAvatarUrl) {
       const userUpdates: Record<string, string> = {};
       if (typeof updatePayload.name === "string") userUpdates.name = updatePayload.name.trim();
       if (typeof updatePayload.email === "string") userUpdates.email = updatePayload.email.trim().toLowerCase();
+      if (uploadedAvatarUrl) userUpdates.avatar = uploadedAvatarUrl;
       if (Object.keys(userUpdates).length > 0) {
         await User.findByIdAndUpdate(req.params.userId, { $set: userUpdates }, { new: false });
       }

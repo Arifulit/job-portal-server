@@ -1,6 +1,43 @@
 // এই model job posting schema, validation, এবং status metadata define করে।
 import { Schema, model, Document, Types } from 'mongoose';
 
+const toIdString = (value: unknown): string => {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (value instanceof Types.ObjectId) return value.toString();
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    const nestedId = (value as { _id?: unknown })._id;
+    if (nestedId instanceof Types.ObjectId) return nestedId.toString();
+    if (typeof nestedId === "string") return nestedId.trim();
+  }
+  if (typeof value === "object" && value !== null && "toString" in value) {
+    return (value as { toString: () => string }).toString().trim();
+  }
+  return "";
+};
+
+const normalizeKeyPart = (value: unknown): string =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+export const buildJobUniquenessKey = (payload: {
+  createdBy?: unknown;
+  company?: unknown;
+  title?: unknown;
+  location?: unknown;
+  jobType?: unknown;
+}): string => {
+  const creatorId = toIdString(payload.createdBy);
+  const companyId = toIdString(payload.company);
+  const title = normalizeKeyPart(payload.title);
+  const location = normalizeKeyPart(payload.location);
+  const jobType = normalizeKeyPart(payload.jobType);
+
+  return [creatorId, companyId, title, location, jobType].join("|");
+};
+
 export interface IStatusHistory {
   status: 'pending' | 'approved' | 'rejected' | 'closed';
   changedBy: Types.ObjectId;
@@ -71,6 +108,7 @@ export interface IJob extends Document {
   skills: string[];
   createdBy: Schema.Types.ObjectId;
   company: Schema.Types.ObjectId; 
+  jobKey?: string;
   status: 'pending' | 'approved' | 'rejected' | 'closed';
   isApproved: boolean;
   rejectionReason?: string;
@@ -131,6 +169,10 @@ const jobSchema = new Schema<IJob>({
     type: Schema.Types.ObjectId, 
     ref: 'Company',
     required: true 
+  },
+  jobKey: {
+    type: String,
+    trim: true,
   },
   status: {
     type: String,
@@ -204,5 +246,34 @@ jobSchema.index({
 // Speed up recruiter/admin dashboard filters and counts.
 jobSchema.index({ createdBy: 1, status: 1 });
 jobSchema.index({ status: 1, isApproved: 1 });
+jobSchema.index({ jobKey: 1 }, { unique: true, sparse: true, name: "job_unique_key_idx" });
+
+jobSchema.pre("validate", function (next) {
+  const shouldRefreshKey =
+    this.isNew ||
+    this.isModified("createdBy") ||
+    this.isModified("company") ||
+    this.isModified("title") ||
+    this.isModified("location") ||
+    this.isModified("jobType");
+
+  if (!shouldRefreshKey) {
+    next();
+    return;
+  }
+
+  this.set(
+    "jobKey",
+    buildJobUniquenessKey({
+      createdBy: this.get("createdBy"),
+      company: this.get("company"),
+      title: this.get("title"),
+      location: this.get("location"),
+      jobType: this.get("jobType"),
+    }),
+  );
+
+  next();
+});
 
 export const Job = model<IJob>('Job', jobSchema);

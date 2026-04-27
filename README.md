@@ -63,6 +63,9 @@ npm start
 - `JWT_ACCESS_SECRET`: supported alias for JWT secret
 - `FRONTEND_URL`: frontend origin for CORS
 - `CLIENT_URL`: supported alias for frontend origin
+- `GOOGLE_CLIENT_ID`: Google OAuth client ID
+- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
+- `GOOGLE_CALLBACK_URL`: OAuth callback URL (default: `http://localhost:5000/api/v1/auth/google/callback`)
 
 ## Health Endpoints
 
@@ -89,6 +92,46 @@ http://localhost:5000/api/v1
 - `/agency`
 - `/messages`
 - `/notifications`
+
+## Google OAuth Login
+
+Endpoints:
+
+- `GET /api/v1/auth/google`: starts Google OAuth flow
+- `GET /api/v1/auth/google?redirect=/dashboard`: starts Google OAuth flow and sends the user back to a custom frontend path after login
+- `GET /api/v1/auth/google/callback`: handles callback, logs user in or creates a new user
+- `GET /api/v1/auth/google/callback?mode=json`: returns the auth payload as JSON instead of redirecting
+
+Behavior:
+
+- Existing user with same email: user is logged in
+- New email: user is created with only `email`, `name`, and `avatar`
+- No Google password is stored
+- The callback issues the same access token and refresh token pair used by normal login
+- If no frontend redirect path is supplied, the user is sent to the frontend root path
+
+## Profile Image Upload
+
+Profile images are uploaded through the existing profile update routes using `multipart/form-data`.
+
+Supported endpoints:
+
+- `PUT /api/v1/candidate` for candidate profile updates
+- `PUT /api/v1/recruiter/profile` for recruiter profile updates
+- `PUT /api/v1/admin` for admin profile updates
+
+Accepted file field names:
+
+- `avatar`
+- `profilePicture`
+- `image`
+- `file`
+
+Rules:
+
+- Image only: `jpg`, `jpeg`, `png`, `webp`, `gif`
+- Maximum size: `3MB`
+- Send the image together with any other profile fields in the same request
 
 ## Postman Collections
 

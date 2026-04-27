@@ -4,7 +4,7 @@ import { Schema, model, Types } from "mongoose";
 export interface IApplication {
   candidate: Types.ObjectId;
   job: Types.ObjectId;
-  status: "Applied" | "Reviewed" | "Interview" | "Hired" | "Rejected" | "Shortlisted" | "Withdrawn";
+  status: "Applied" | "Reviewed" | "Rejected" | "Accepted" | "Withdrawn";
   resume?: string;
   coverLetter?: string;
 }
@@ -14,7 +14,7 @@ const applicationSchema = new Schema<IApplication>({
   job: { type: Schema.Types.ObjectId, ref: "Job", required: true },
   status: { 
     type: String, 
-    enum: ["Applied", "Reviewed", "Interview", "Hired", "Rejected","Shortlisted","Withdrawn"], 
+    enum: ["Applied", "Reviewed", "Rejected", "Accepted", "Withdrawn"], 
     default: "Applied" 
   },
   resume: { type: String },

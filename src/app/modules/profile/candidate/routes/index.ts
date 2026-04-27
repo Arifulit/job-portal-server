@@ -9,6 +9,7 @@ import {
 import authMiddleware, { optionalAuth } from "../../../../middleware/auth";
 import asyncHandler from "../../../../utils/asyncHandler";
 import { getCandidateDashboardStatsController } from "../../../analytics/controllers/dashboardStatsController";
+import { getApprovedJobs } from "../../../job/controllers/jobController";
 
 const router = Router();
 
@@ -32,6 +33,13 @@ if (!isVercelDeployment) {
   const resumeRoutes = require("./resumeRoutes").default as Router;
   router.use("/resume", resumeRoutes);
 }
+
+// Candidate job list: GET /api/v1/candidate/jobs
+router.get(
+  "/jobs",
+  authMiddleware(["candidate", "admin"]),
+  asyncHandler(getApprovedJobs)
+);
 
 // Candidate dashboard stats
 router.get(

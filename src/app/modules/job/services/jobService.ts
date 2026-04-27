@@ -1,6 +1,20 @@
 // এই service job search/filter/create/update business logic implement করে।
-import { Job, IJob } from "../models/Job";
+import { Job, IJob, buildJobUniquenessKey } from "../models/Job";
 import { FilterQuery, Types, PopulateOptions } from "mongoose";
+
+type ServiceError = Error & {
+  code?: string;
+  status?: number;
+};
+
+const createDuplicateJobError = (): ServiceError => {
+  const error = new Error(
+    "Duplicate job posting detected. Same title, company, location and job type cannot be created twice.",
+  ) as ServiceError;
+  error.code = "DUPLICATE_JOB";
+  error.status = 409;
+  return error;
+};
 
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -241,24 +255,74 @@ export const getJobById = async (id: string) => {
 
 export const createJob = async (data: Omit<IJob, 'createdAt' | 'updatedAt'>) => {
   try {
+    const jobKey = buildJobUniquenessKey({
+      createdBy: (data as any).createdBy,
+      company: (data as any).company,
+      title: (data as any).title,
+      location: (data as any).location,
+      jobType: (data as any).jobType,
+    });
+
+    const existingJob = await Job.findOne({ jobKey }).select("_id").lean();
+    if (existingJob) {
+      throw createDuplicateJobError();
+    }
+
     // Default to pending unless caller explicitly sets approval state.
     const jobData = {
       ...data,
+      jobKey,
       status: data.status ?? 'pending',
       isApproved: data.isApproved ?? false
     };
     return await Job.create(jobData);
   } catch (error) {
+    if ((error as any)?.code === 11000) {
+      throw createDuplicateJobError();
+    }
+
+    if ((error as ServiceError)?.code === "DUPLICATE_JOB") {
+      throw error;
+    }
+
     throw new Error(`Failed to create job: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
 export const updateJob = async (id: string, data: IJobUpdateData) => {
   try {
+    const currentJob = await Job.findById(id)
+      .select("createdBy company title location jobType")
+      .lean();
+
+    if (!currentJob) {
+      throw new Error("Job not found");
+    }
+
+    const nextJobKey = buildJobUniquenessKey({
+      createdBy: (data as any).createdBy ?? (currentJob as any).createdBy,
+      company: (data as any).company ?? (currentJob as any).company,
+      title: (data as any).title ?? (currentJob as any).title,
+      location: (data as any).location ?? (currentJob as any).location,
+      jobType: (data as any).jobType ?? (currentJob as any).jobType,
+    });
+
+    const conflictJob = await Job.findOne({
+      _id: { $ne: id },
+      jobKey: nextJobKey,
+    })
+      .select("_id")
+      .lean();
+
+    if (conflictJob) {
+      throw createDuplicateJobError();
+    }
+
     const job = await Job.findByIdAndUpdate(
       id,
       { 
         ...data,
+        jobKey: nextJobKey,
         $currentDate: { updatedAt: true } // Ensure updatedAt is always updated
       },
       { new: true, runValidators: true }
@@ -272,6 +336,14 @@ export const updateJob = async (id: string, data: IJobUpdateData) => {
     
     return job;
   } catch (error) {
+    if ((error as any)?.code === 11000) {
+      throw createDuplicateJobError();
+    }
+
+    if ((error as ServiceError)?.code === "DUPLICATE_JOB") {
+      throw error;
+    }
+
     throw new Error(`Failed to update job: ${error instanceof Error ? error.message : String(error)}`);
   }
 };

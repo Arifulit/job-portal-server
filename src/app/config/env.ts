@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(process.cwd(), ".env"), quiet: true });
 
 const dbUrl = process.env.DB_URL || process.env.DB_URI || process.env.MONGODB_URI;
 const jwtSecret = process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET;
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || jwtSecret;
 const clientUrl = process.env.FRONTEND_URL || process.env.CLIENT_URL || "http://localhost:3000";
 
 export const env = {
@@ -23,6 +24,7 @@ export const env = {
 
   // JWT
   JWT_SECRET: jwtSecret || "secretkey",
+  JWT_REFRESH_SECRET: jwtRefreshSecret || "secretkey",
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
 
   // Cloudinary
@@ -33,6 +35,12 @@ export const env = {
   // Client
   FRONTEND_URL: clientUrl,
   CLIENT_URL: clientUrl,
+
+  // Google OAuth
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_CALLBACK_URL:
+    process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/api/v1/auth/google/callback",
 
   // Mailer (SMTP)
   SMTP_HOST: process.env.SMTP_HOST,

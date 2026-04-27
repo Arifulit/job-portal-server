@@ -23,7 +23,7 @@ export const getApplicationStats = async () => {
 // Candidate Engagement: Notification Stats
 export const getCandidateEngagement = async () => {
   const totalNotifications = await Notification.countDocuments();
-  const unreadNotifications = await Notification.countDocuments({ read: false });
+  const unreadNotifications = await Notification.countDocuments({ isRead: false });
 
   return { totalNotifications, unreadNotifications };
 };

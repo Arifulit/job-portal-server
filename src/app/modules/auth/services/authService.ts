@@ -4,8 +4,10 @@
 import { User, IUser } from "../models/User";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { env } from "../../../config/env";
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-key-do-not-use-in-production";
+const JWT_ACCESS_SECRET = env.JWT_SECRET;
+const JWT_REFRESH_SECRET = env.JWT_REFRESH_SECRET;
 
 export const registerUser = async (name: string, email: string, password: string, role: IUser["role"]) => {
   // চেক করুন ইমেইল ইতিমধ্যে ব্যবহৃত হয়েছে কিনা
@@ -15,7 +17,7 @@ export const registerUser = async (name: string, email: string, password: string
   }
 
   // নতুন user তৈরি করুন। Password automatically hash হবে pre-save middleware এর মাধ্যমে
-  const user = new User({ name, email, password, role });
+  const user = new User({ name, email, password, role, authProvider: "local" });
   await user.save();
 
   // Create a new object without the password field using destructuring
@@ -32,6 +34,10 @@ export const loginUser = async (email: string, password: string) => {
     throw new Error("User not found");
   }
 
+  if (!user.password) {
+    throw new Error("This account uses Google login. Please continue with Google.");
+  }
+
   // Password verify করুন
   const isPasswordValid = await bcrypt.compare(password, user.password);
   
@@ -46,13 +52,82 @@ export const loginUser = async (email: string, password: string) => {
   return { user: userResponse };
 };
 
+export const findOrCreateGoogleUser = async ({
+  googleId,
+  email,
+  name,
+  avatar,
+}: {
+  googleId: string;
+  email: string;
+  name: string;
+  avatar?: string;
+}) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedName = name.trim();
+  const normalizedAvatar = avatar?.trim() || "";
+  const normalizedGoogleId = googleId.trim();
+
+  let user = await User.findOne({ email: normalizedEmail }).select("+password");
+
+  if (!user) {
+    user = await User.create({
+      email: normalizedEmail,
+      name: normalizedName,
+      avatar: normalizedAvatar,
+      role: "candidate",
+      authProvider: "google",
+      googleId: normalizedGoogleId,
+      isEmailVerified: true,
+    });
+
+    const { password: _createdPassword, ...createdUser } = user.toObject();
+    return createdUser;
+  }
+
+  const updates: Partial<
+    Pick<IUser, "name" | "avatar" | "isEmailVerified" | "authProvider" | "googleId">
+  > = {};
+
+  if (normalizedName && user.name !== normalizedName) {
+    updates.name = normalizedName;
+  }
+
+  if (normalizedAvatar && user.avatar !== normalizedAvatar) {
+    updates.avatar = normalizedAvatar;
+  }
+
+  if (!user.isEmailVerified) {
+    updates.isEmailVerified = true;
+  }
+
+  if (user.authProvider !== "google") {
+    updates.authProvider = "google";
+  }
+
+  if (!user.googleId || user.googleId !== normalizedGoogleId) {
+    updates.googleId = normalizedGoogleId;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    user = await User.findByIdAndUpdate(user._id, { $set: updates }, { new: true }).select("+password");
+  }
+
+  if (!user) {
+    throw new Error("Failed to load Google user");
+  }
+
+  const { password: _password, ...userResponse } = user.toObject();
+  return userResponse;
+};
+
 export const signToken = (
   payload: object, 
   expiresIn: string | number = "24h"
 ): string => {
   return jwt.sign(
     payload, 
-    JWT_SECRET as jwt.Secret, 
+    JWT_ACCESS_SECRET as jwt.Secret, 
     { 
       expiresIn: expiresIn as string,
       algorithm: 'HS256' // Explicitly set the algorithm
@@ -62,10 +137,23 @@ export const signToken = (
 
 export const verifyToken = (token: string): any => {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET as jwt.Secret);
+    const decoded = jwt.verify(token, JWT_ACCESS_SECRET as jwt.Secret, {
+      algorithms: ["HS256"],
+    });
     return decoded;
   } catch (_error) {
     throw new Error("Invalid token");
+  }
+};
+
+export const verifyRefreshToken = (token: string): any => {
+  try {
+    const decoded = jwt.verify(token, JWT_REFRESH_SECRET as jwt.Secret, {
+      algorithms: ["HS256"],
+    });
+    return decoded;
+  } catch (_error) {
+    throw new Error("Invalid refresh token");
   }
 };
 
@@ -76,7 +164,10 @@ export const generateAccessToken = (userId: string, role: string, email: string)
 
 export const generateRefreshToken = (userId: string): string => {
   const payload = { id: userId };
-  return signToken(payload, "30d");
+  return jwt.sign(payload, JWT_REFRESH_SECRET as jwt.Secret, {
+    expiresIn: "30d",
+    algorithm: "HS256",
+  });
 };
 
 // Optional: Refresh token database এ save করার function
