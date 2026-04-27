@@ -13,15 +13,18 @@ import adminRoutes from "../modules/profile/admin/routes";
 import messageRoutes from "../modules/message/routes/messageRoutes";
 import notificationRoutes from "../modules/notification/routes/notificationRoutes";
 import { authMiddleware } from "../middleware/auth";
+
 import resumeRoutes from "../modules/resume/routes/resumeRoutes";
-// Resume analyzer route
-router.use("/resume", resumeRoutes);
 import {
   getAdminDashboardStatsController,
   getRoleBasedDashboardStatsController,
 } from "../modules/analytics/controllers/dashboardStatsController";
 
 const router = Router();
+
+// Resume analyzer route
+router.use("/resume", resumeRoutes);
+
 
 router.use("/auth", authRoutes);
 

@@ -3,8 +3,7 @@ import { resumeUpload } from "../../../middleware/upload";
 import pdfParse from "pdf-parse";
 import fs from "fs";
 import path from "path";
-import { analyzeResumeWithOpenAI } from "../../integrations/openai/resumeParser";
-
+import { analyzeResumeWithOpenAI } from "../../../integrations/openai/resumeParser";
 const router = Router();
 
 // POST /resume/analyze
