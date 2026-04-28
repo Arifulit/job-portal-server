@@ -1,8 +1,8 @@
 import cors from "cors";
 
 const allowedOrigins = [
-  "http://localhost:3000",
-  "https://yourfrontenddomain.com"
+  "http://localhost:5173",
+  "https://job-portal-client-jade-one.vercel.app"
 ];
 
 export const corsMiddleware = cors({

@@ -10,6 +10,7 @@ import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfil
 import { AdminProfile } from "../../profile/admin/models/AdminProfile";
 import { RecruitmentAgency } from "../../agency/models/recruitmentAgency.model";
 import Company from "../../company/models/Company";
+import axios from "axios";
 
 const ACCESS_TTL = "24h";
 const REFRESH_COOKIE_NAME = "refreshToken";
@@ -555,5 +556,62 @@ export const me = async (req: Request, res: Response) => {
       success: false,
       message: error.message || "Invalid or expired token",
     });
+  }
+};
+
+export const googleTokenExchange = async (req: Request, res: Response) => {
+  try {
+    const { idToken } = req.body;
+    if (!idToken) {
+      return res.status(400).json({ success: false, message: "idToken is required in body" });
+    }
+
+    // Verify token with Google
+    const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
+    const resp = await axios.get(verifyUrl, { timeout: 5000 });
+    const data = resp.data as any;
+
+    // Check audience
+    if (data.aud !== env.GOOGLE_CLIENT_ID) {
+      return res.status(400).json({ success: false, message: "Token audience mismatch" });
+    }
+
+    const email = String(data.email || "").trim().toLowerCase();
+    const name = String(data.name || email.split("@")[0] || "").trim();
+    const avatar = String(data.picture || "").trim();
+    const googleId = String(data.sub || "").trim();
+
+    if (!email || !googleId) {
+      return res.status(400).json({ success: false, message: "Invalid token payload" });
+    }
+
+    const user = await authService.findOrCreateGoogleUser({
+      googleId,
+      email,
+      name,
+      avatar,
+    });
+
+    const userId = (user as any)._id.toString();
+    const accessToken = authService.signToken({ id: userId, role: (user as any).role, email: (user as any).email }, ACCESS_TTL);
+    const refreshToken = authService.generateRefreshToken(userId);
+
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: REFRESH_COOKIE_MAXAGE,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: toAuthUserPayload(user),
+        accessToken,
+        refreshToken,
+      },
+    });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error?.response?.data || error.message || "Token verification failed" });
   }
 };
