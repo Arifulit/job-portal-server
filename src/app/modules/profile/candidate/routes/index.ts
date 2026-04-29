@@ -13,8 +13,6 @@ import { getApprovedJobs } from "../../../job/controllers/jobController";
 
 const router = Router();
 
-console.log("✅ Candidate Routes Loaded");
-
 // Debug middleware to log all requests
 router.use((req: Request, res: Response, next: NextFunction) => {
   console.log(`🔍 Candidate Routes - ${req.method} ${req.path} | Original: ${req.originalUrl} | Base: ${req.baseUrl}`);
@@ -39,7 +37,11 @@ if (!isVercelDeployment) {
 router.get(
   "/jobs",
   authMiddleware(["candidate", "admin"]),
-  asyncHandler(getApprovedJobs)
+  asyncHandler(getApprovedJobs as unknown as (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => Promise<void>)
 );
 
 // Candidate dashboard stats
