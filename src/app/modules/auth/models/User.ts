@@ -8,6 +8,8 @@ export interface IUser extends Document {
   name: string;
   email: string;
   password?: string;
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
   avatar?: string;
   authProvider?: "local" | "google";
   googleId?: string;
@@ -86,6 +88,13 @@ const userSchema = new Schema<IUser>(
     },
     refreshToken: {
       type: String,
+    },
+    passwordResetToken: {
+      type: String,
+      select: false,
+    },
+    passwordResetExpires: {
+      type: Date,
     },
   },
   {

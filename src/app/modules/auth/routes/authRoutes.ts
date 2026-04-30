@@ -11,15 +11,22 @@ import {
 	googleAuth,
 	googleCallback,
 	googleDebug,
-} from "../controllers/authController";
+	forgotPassword,
+	resetPassword,
+} from "../controllers";
 
 const router = Router();
 
 router.post("/register", register);
 router.post("/login", login);
 router.get("/google/debug", googleDebug);
+
 router.get("/google", googleAuth);
 router.get("/google/callback", googleCallback);
+
+
+router.post("/forgot-password", forgotPassword);
+router.post("/reset-password", resetPassword);
 router.post("/refresh", refresh);
 router.post("/logout", logout);
 router.get("/me", me);

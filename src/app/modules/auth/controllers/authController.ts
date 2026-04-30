@@ -1,4 +1,3 @@
-// এই controller auth request গ্রহণ করে service call করে response return করে।
 import { NextFunction, Request, Response } from "express";
 import { Types } from "mongoose";
 import * as authService from "../services/authService";
@@ -14,7 +13,7 @@ import axios from "axios";
 
 const ACCESS_TTL = "24h";
 const REFRESH_COOKIE_NAME = "refreshToken";
-const REFRESH_COOKIE_MAXAGE = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+const REFRESH_COOKIE_MAXAGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 const hasGoogleOAuthConfig = Boolean(
   env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CALLBACK_URL,
 );
@@ -26,19 +25,13 @@ const mask = (value: string, visiblePrefix = 6, visibleSuffix = 4) => {
 };
 
 const decodeOAuthRedirectState = (state: unknown): string => {
-  if (typeof state !== "string" || !state) {
-    return "/";
-  }
-
+  if (typeof state !== "string" || !state) return "/";
   try {
-    const decodedPath = Buffer.from(state, "base64url").toString("utf8").trim();
-    if (decodedPath.startsWith("/")) {
-      return decodedPath;
-    }
-  } catch (_error) {
-    // ignore decode errors and return fallback path
+    const decoded = Buffer.from(state, "base64url").toString("utf8").trim();
+    if (decoded.startsWith("/")) return decoded;
+  } catch (_e) {
+    // ignore
   }
-
   return "/";
 };
 
@@ -64,7 +57,6 @@ const toAuthUserPayload = (user: any) => {
       recruiterApprovedBy: user.recruiterApprovedBy ?? null,
     };
   }
-
   return base;
 };
 
@@ -88,396 +80,208 @@ export const register = async (req: Request, res: Response) => {
       location,
     } = req.body;
 
-    // Required field validation
     if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Name, email, and password are required",
-      });
+      return res.status(400).json({ success: false, message: "Name, email, and password are required" });
     }
 
-    // Create user
-    const user = await authService.registerUser(
-      name,
-      email,
-      password,
-      role as any,
-    );
+    const user = await authService.registerUser(name, email, password, role as any);
 
     if (role === "recruiter") {
       (user as any).isRecruiterApproved = false;
     }
 
-    // Create corresponding profile based on role
     const userId = user._id.toString();
 
     switch (role) {
       case "candidate":
         if (!phone || !biodata || !location) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Phone number, biodata and location are required for candidate registration",
-          });
+          return res.status(400).json({ success: false, message: "Phone, biodata and location are required for candidate registration" });
         }
-        await CandidateProfile.create({
-          user: userId,
-          name,
-          phone,
-          bio: String(biodata).trim(),
-          address: String(location).trim(),
-          skills: skills || [],
-        });
+        await CandidateProfile.create({ user: userId, name, phone, bio: String(biodata).trim(), address: String(location).trim(), skills: skills || [] });
         break;
 
       case "recruiter": {
-        if (
-          !phone ||
-          !biodata ||
-          !location ||
-          !designation ||
-          !companyName ||
-          !yearOfEstablishment ||
-          !companyAddress ||
-          !industryType ||
-          !websiteUrl
-        ) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Phone, biodata, location, designation, companyName, yearOfEstablishment, companyAddress, industryType and websiteUrl are required for recruiter registration",
-          });
+        if (!phone || !biodata || !location || !designation || !companyName || !yearOfEstablishment || !companyAddress || !industryType || !websiteUrl) {
+          return res.status(400).json({ success: false, message: "Missing recruiter required fields" });
         }
-
         const normalizedCompanyName = String(companyName).trim();
         const companyDoc = await Company.findOneAndUpdate(
           { name: { $regex: `^${normalizedCompanyName}$`, $options: "i" } },
-          {
-            $set: {
-              industry: String(industryType).trim(),
-              website: String(websiteUrl).trim(),
-              address: String(companyAddress).trim(),
-              yearOfEstablishment: Number(yearOfEstablishment),
-            },
-            $setOnInsert: {
-              name: normalizedCompanyName,
-              isVerified: false,
-            },
-          },
+          { $set: { industry: String(industryType).trim(), website: String(websiteUrl).trim(), address: String(companyAddress).trim(), yearOfEstablishment: Number(yearOfEstablishment) }, $setOnInsert: { name: normalizedCompanyName, isVerified: false } },
           { new: true, upsert: true },
         );
 
         let agencyId = agency;
         if (!agencyId || !Types.ObjectId.isValid(agencyId)) {
-          let agencyDoc = await RecruitmentAgency.findOne({
-            name: { $regex: `^${normalizedCompanyName}$`, $options: "i" },
-          });
-
+          let agencyDoc = await RecruitmentAgency.findOne({ name: { $regex: `^${normalizedCompanyName}$`, $options: "i" } });
           if (!agencyDoc) {
-            agencyDoc = await RecruitmentAgency.create({
-              name: normalizedCompanyName,
-              website: String(websiteUrl).trim(),
-              industry: String(industryType).trim(),
-            });
+            agencyDoc = await RecruitmentAgency.create({ name: normalizedCompanyName, website: String(websiteUrl).trim(), industry: String(industryType).trim() });
           }
-
           agencyId = agencyDoc._id;
         }
 
-        await RecruiterProfile.create({
-          user: userId,
-          phone,
-          designation,
-          bio: String(biodata).trim(),
-          location: String(location).trim(),
-          agency: agencyId,
-          company: companyDoc._id,
-        });
+        await RecruiterProfile.create({ user: userId, phone, designation, bio: String(biodata).trim(), location: String(location).trim(), agency: agencyId, company: companyDoc._id });
         break;
       }
 
       case "admin":
         if (!phone || !biodata || !location) {
-          return res.status(400).json({
-            success: false,
-            message:
-              "Phone number, biodata and location are required for admin registration",
-          });
+          return res.status(400).json({ success: false, message: "Phone, biodata and location are required for admin registration" });
         }
-        await AdminProfile.create({
-          user: userId,
-          name,
-          email,
-          phone,
-          biodata: String(biodata).trim(),
-          location: String(location).trim(),
-          role: "Admin",
-        });
+        await AdminProfile.create({ user: userId, name, email, phone, biodata: String(biodata).trim(), location: String(location).trim(), role: "Admin" });
         break;
 
       default:
-        return res.status(400).json({
-          success: false,
-          message: "Invalid role specified",
-        });
+        return res.status(400).json({ success: false, message: "Invalid role specified" });
     }
 
-    // Generate tokens
-    const accessToken = authService.signToken(
-      { id: userId, role: user.role, email: user.email },
-      ACCESS_TTL,
-    );
+    const accessToken = authService.signToken({ id: userId, role: user.role, email: user.email }, ACCESS_TTL);
     const refreshToken = authService.generateRefreshToken(userId);
 
-    // Set refresh token cookie
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE,
-    });
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: REFRESH_COOKIE_MAXAGE });
 
-    res.status(201).json({
-      success: true,
-      message:
-        role === "recruiter"
-          ? "Recruiter registered successfully. Waiting for admin approval."
-          : "Registration successful",
-      data: {
-        user: toAuthUserPayload(user),
-        accessToken,
-        refreshToken,
-      },
-    });
+    res.status(201).json({ success: true, message: role === "recruiter" ? "Recruiter registered successfully. Waiting for admin approval." : "Registration successful", data: { user: toAuthUserPayload(user), accessToken, refreshToken } });
   } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: error.message || "Registration failed",
-    });
+    res.status(400).json({ success: false, message: error.message || "Registration failed" });
   }
 };
 
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password are required" });
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Email and password are required",
-      });
-    }
-
-    // Authenticate user
     const { user } = await authService.loginUser(email, password);
     const userId = user._id.toString();
 
-    // Generate tokens
-    const accessToken = authService.signToken(
-      { id: userId, role: user.role, email: user.email },
-      ACCESS_TTL,
-    );
-
+    const accessToken = authService.signToken({ id: userId, role: user.role, email: user.email }, ACCESS_TTL);
     const refreshToken = authService.generateRefreshToken(userId);
 
-    // Set refresh token cookie
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE,
-    });
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: REFRESH_COOKIE_MAXAGE });
 
-    res.status(200).json({
-      success: true,
-      data: {
-        user: toAuthUserPayload(user),
-        accessToken,
-        refreshToken,
-      },
-    });
+    res.status(200).json({ success: true, data: { user: toAuthUserPayload(user), accessToken, refreshToken } });
   } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      message: error.message || "Login failed. Please check your credentials.",
-    });
+    res.status(400).json({ success: false, message: error.message || "Login failed. Please check your credentials." });
   }
 };
 
 export const googleAuth = (req: Request, res: Response, next: NextFunction) => {
-  if (!hasGoogleOAuthConfig) {
-    return res.status(503).json({
-      success: false,
-      message:
-        "Google login is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL.",
-    });
-  }
+  if (!hasGoogleOAuthConfig) return res.status(503).json({ success: false, message: "Google login is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL." });
 
-  const requestedRedirect =
-    typeof req.query.redirect === "string" && req.query.redirect.startsWith("/")
-      ? req.query.redirect
-      : "/";
-
+  const requestedRedirect = typeof req.query.redirect === "string" && req.query.redirect.startsWith("/") ? req.query.redirect : "/";
   const state = Buffer.from(requestedRedirect, "utf8").toString("base64url");
 
-  passport.authenticate("google", {
-    scope: ["email", "profile"],
-    session: false,
-    state,
-  })(req, res, next);
+  passport.authenticate("google", { scope: ["email", "profile"], session: false, state })(req, res, next);
 };
 
 export const googleDebug = (_req: Request, res: Response) => {
   const configuredCallbackUrl = env.GOOGLE_CALLBACK_URL ?? "";
-  return res.status(200).json({
-    success: true,
-    googleOAuth: {
-      configured: hasGoogleOAuthConfig,
-      callbackUrl: configuredCallbackUrl,
-      clientIdMasked: env.GOOGLE_CLIENT_ID ? mask(env.GOOGLE_CLIENT_ID, 10, 10) : "",
-      // Helpful hints for common console mismatch issues
-      expectedAuthorizedRedirectUris: configuredCallbackUrl ? [configuredCallbackUrl] : [],
-      notes: [
-        "Google Console -> Credentials -> OAuth Client (Web application) must include the callbackUrl in Authorized redirect URIs (exact match).",
-        "If Consent Screen is Testing, add your Gmail to Test users.",
-        "If you have multiple OAuth clients, ensure GOOGLE_CLIENT_ID matches the client you edited in Console.",
-      ],
-    },
-  });
+  return res.status(200).json({ success: true, googleOAuth: { configured: hasGoogleOAuthConfig, callbackUrl: configuredCallbackUrl, clientIdMasked: env.GOOGLE_CLIENT_ID ? mask(env.GOOGLE_CLIENT_ID, 10, 10) : "", expectedAuthorizedRedirectUris: configuredCallbackUrl ? [configuredCallbackUrl] : [], notes: ["Google Console -> Credentials -> OAuth Client (Web application) must include the callbackUrl in Authorized redirect URIs (exact match).", "If Consent Screen is Testing, add your Gmail to Test users.", "If you have multiple OAuth clients, ensure GOOGLE_CLIENT_ID matches the client you edited in Console."] } });
 };
 
 export const googleCallback = (req: Request, res: Response, next: NextFunction) => {
-  if (!hasGoogleOAuthConfig) {
-    return res.status(503).json({
-      success: false,
-      message:
-        "Google login is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL.",
+  if (!hasGoogleOAuthConfig) return res.status(503).json({ success: false, message: "Google login is not configured. Please set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL." });
+
+  passport.authenticate("google", { session: false }, async (error: Error | null, user: any) => {
+    if (error || !user) return res.status(401).json({ success: false, message: error?.message || "Google authentication failed" });
+
+    const userId = user._id.toString();
+    // If user is candidate, ensure candidate profile exists
+    if (user.role === "candidate") {
+      const existingProfile = await CandidateProfile.findOne({ user: userId });
+      if (!existingProfile) {
+        await CandidateProfile.create({ user: userId, name: user.name || "", phone: "", bio: "", address: "", skills: [] });
+      }
+    }
+
+    const accessToken = authService.signToken({ id: userId, role: user.role, email: user.email }, ACCESS_TTL);
+    const refreshToken = authService.generateRefreshToken(userId);
+
+    res.cookie(REFRESH_COOKIE_NAME, refreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: REFRESH_COOKIE_MAXAGE });
+
+
+    // Log full user info and tokens
+    console.log("[Google Registration/Login]", {
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        password: user.password,
+        avatar: user.avatar,
+        authProvider: user.authProvider,
+        role: user.role,
+        savedJobs: user.savedJobs,
+        isEmailVerified: user.isEmailVerified,
+        isSuspended: user.isSuspended,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        __v: user.__v,
+        googleId: user.googleId
+      },
+      accessToken,
+      refreshToken
     });
+
+    if (req.query.mode === "json") return res.status(200).json({ success: true, data: { user: toAuthUserPayload(user), accessToken, refreshToken } });
+
+    const frontendUrl = new URL(env.FRONTEND_URL);
+    frontendUrl.pathname = decodeOAuthRedirectState(req.query.state);
+    frontendUrl.searchParams.set("accessToken", accessToken);
+    return res.redirect(frontendUrl.toString());
+  })(req, res, next);
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+    await authService.requestPasswordReset(email);
+    return res.status(200).json({ success: true, message: "If that email is registered, a password reset link has been sent." });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message || "Failed to process request" });
   }
+};
 
-  passport.authenticate(
-    "google",
-    { session: false },
-    async (error: Error | null, user: any) => {
-      if (error || !user) {
-        return res.status(401).json({
-          success: false,
-          message: error?.message || "Google authentication failed",
-        });
-      }
-
-      const userId = user._id.toString();
-      const accessToken = authService.signToken(
-        { id: userId, role: user.role, email: user.email },
-        ACCESS_TTL,
-      );
-      const refreshToken = authService.generateRefreshToken(userId);
-
-      res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: REFRESH_COOKIE_MAXAGE,
-      });
-
-      if (req.query.mode === "json") {
-        return res.status(200).json({
-          success: true,
-          data: {
-            user: toAuthUserPayload(user),
-            accessToken,
-            refreshToken,
-          },
-        });
-      }
-
-      const frontendUrl = new URL(env.FRONTEND_URL);
-      frontendUrl.pathname = decodeOAuthRedirectState(req.query.state);
-      frontendUrl.searchParams.set("accessToken", accessToken);
-      return res.redirect(frontendUrl.toString());
-    },
-  )(req, res, next);
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) return res.status(400).json({ success: false, message: "Token and new password are required" });
+    await authService.resetPassword(token, password);
+    return res.status(200).json({ success: true, message: "Password has been reset successfully" });
+  } catch (error: any) {
+    return res.status(400).json({ success: false, message: error.message || "Failed to reset password" });
+  }
 };
 
 export const refresh = async (req: Request, res: Response) => {
   try {
-    const refreshToken =
-      req.cookies?.[REFRESH_COOKIE_NAME] || req.body.refreshToken;
-
-    if (!refreshToken) {
-      return res.status(401).json({
-        success: false,
-        message: "Refresh token is required",
-      });
-    }
+    const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body.refreshToken;
+    if (!refreshToken) return res.status(401).json({ success: false, message: "Refresh token is required" });
 
     const decoded: any = authService.verifyRefreshToken(refreshToken);
     const userId = decoded.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid refresh token",
-      });
-    }
+    if (!userId) return res.status(401).json({ success: false, message: "Invalid refresh token" });
 
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    if (!user) return res.status(401).json({ success: false, message: "User not found" });
 
-    // Generate new tokens
-    const newAccessToken = authService.signToken(
-      { id: userId, role: user.role, email: user.email },
-      ACCESS_TTL,
-    );
-
+    const newAccessToken = authService.signToken({ id: userId, role: user.role, email: user.email }, ACCESS_TTL);
     const newRefreshToken = authService.generateRefreshToken(userId);
 
-    // Update refresh token cookie
-    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE,
-    });
+    res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: REFRESH_COOKIE_MAXAGE });
 
-    res.status(200).json({
-      success: true,
-      data: {
-        accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
-      },
-    });
+    res.status(200).json({ success: true, data: { accessToken: newAccessToken, refreshToken: newRefreshToken } });
   } catch (_error: any) {
-    res.status(401).json({
-      success: false,
-      message: "Invalid refresh token",
-    });
+    res.status(401).json({ success: false, message: "Invalid refresh token" });
   }
 };
 
 export const logout = async (req: Request, res: Response) => {
   try {
-    // Clear the refresh token cookie
-    res.clearCookie(REFRESH_COOKIE_NAME, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Successfully logged out",
-    });
+    res.clearCookie(REFRESH_COOKIE_NAME, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" });
+    res.status(200).json({ success: true, message: "Successfully logged out" });
   } catch (_error: any) {
-    res.status(500).json({
-      success: false,
-      message: "Logout failed",
-    });
+    res.status(500).json({ success: false, message: "Logout failed" });
   }
 };
 
@@ -485,40 +289,18 @@ export const me = async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
     let token: string | undefined;
-
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
-    } else if (req.cookies?.[REFRESH_COOKIE_NAME]) {
-      token = req.cookies[REFRESH_COOKIE_NAME];
-    }
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication token is required",
-      });
-    }
+    if (authHeader && authHeader.startsWith("Bearer ")) token = authHeader.substring(7);
+    else if (req.cookies?.[REFRESH_COOKIE_NAME]) token = req.cookies[REFRESH_COOKIE_NAME];
+    if (!token) return res.status(401).json({ success: false, message: "Authentication token is required" });
 
     const decoded: any = authService.verifyToken(token);
     const userId = decoded.id;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid token",
-      });
-    }
+    if (!userId) return res.status(401).json({ success: false, message: "Invalid token" });
 
     const user = await User.findById(userId).lean();
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     let profile: any = null;
-
     switch (user.role) {
       case "candidate":
         profile = await CandidateProfile.findOne({ user: userId }).lean();
@@ -531,87 +313,10 @@ export const me = async (req: Request, res: Response) => {
         break;
     }
 
-    const userResponse = {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      avatar: (user as any).avatar ?? "",
-      role: user.role,
-      ...(user.role === "recruiter"
-        ? {
-            isRecruiterApproved: (user as any).isRecruiterApproved ?? false,
-            recruiterApprovedAt: (user as any).recruiterApprovedAt ?? null,
-            recruiterApprovedBy: (user as any).recruiterApprovedBy ?? null,
-          }
-        : {}),
-      profile,
-    };
+    const userResponse = { id: user._id, name: user.name, email: user.email, avatar: (user as any).avatar ?? "", role: user.role, ...(user.role === "recruiter" ? { isRecruiterApproved: (user as any).isRecruiterApproved ?? false, recruiterApprovedAt: (user as any).recruiterApprovedAt ?? null, recruiterApprovedBy: (user as any).recruiterApprovedBy ?? null } : {}), profile };
 
-    res.status(200).json({
-      success: true,
-      data: userResponse,
-    });
+    res.status(200).json({ success: true, data: userResponse });
   } catch (error: any) {
-    res.status(401).json({
-      success: false,
-      message: error.message || "Invalid or expired token",
-    });
-  }
-};
-
-export const googleTokenExchange = async (req: Request, res: Response) => {
-  try {
-    const { idToken } = req.body;
-    if (!idToken) {
-      return res.status(400).json({ success: false, message: "idToken is required in body" });
-    }
-
-    // Verify token with Google
-    const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-    const resp = await axios.get(verifyUrl, { timeout: 5000 });
-    const data = resp.data as any;
-
-    // Check audience
-    if (data.aud !== env.GOOGLE_CLIENT_ID) {
-      return res.status(400).json({ success: false, message: "Token audience mismatch" });
-    }
-
-    const email = String(data.email || "").trim().toLowerCase();
-    const name = String(data.name || email.split("@")[0] || "").trim();
-    const avatar = String(data.picture || "").trim();
-    const googleId = String(data.sub || "").trim();
-
-    if (!email || !googleId) {
-      return res.status(400).json({ success: false, message: "Invalid token payload" });
-    }
-
-    const user = await authService.findOrCreateGoogleUser({
-      googleId,
-      email,
-      name,
-      avatar,
-    });
-
-    const userId = (user as any)._id.toString();
-    const accessToken = authService.signToken({ id: userId, role: (user as any).role, email: (user as any).email }, ACCESS_TTL);
-    const refreshToken = authService.generateRefreshToken(userId);
-
-    res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: REFRESH_COOKIE_MAXAGE,
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        user: toAuthUserPayload(user),
-        accessToken,
-        refreshToken,
-      },
-    });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error?.response?.data || error.message || "Token verification failed" });
+    res.status(401).json({ success: false, message: error.message || "Invalid or expired token" });
   }
 };

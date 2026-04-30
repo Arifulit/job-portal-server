@@ -35,10 +35,10 @@ export interface ICandidateProfile {
 const candidateProfileSchema = new Schema<ICandidateProfile>({
   user: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
   name: { type: String, required: true },
-  phone: { type: String, required: true },
+  phone: { type: String, required: false },
   email: { type: String },
-  address: { type: String },
-  bio: { type: String, default: "" },
+  address: { type: String, required: false },
+  bio: { type: String, default: "", required: false },
   skills: [{ type: String }],
   experience: [{
     company: { type: String, required: true },

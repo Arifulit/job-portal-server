@@ -5,6 +5,8 @@ import { User, IUser } from "../models/User";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { env } from "../../../config/env";
+import crypto from "crypto";
+import { sendPasswordResetEmail } from "../../../utils/mailer";
 
 const JWT_ACCESS_SECRET = env.JWT_SECRET;
 const JWT_REFRESH_SECRET = env.JWT_REFRESH_SECRET;
@@ -168,6 +170,52 @@ export const generateRefreshToken = (userId: string): string => {
     expiresIn: "30d",
     algorithm: "HS256",
   });
+};
+
+export const requestPasswordReset = async (email: string) => {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+
+  // Find user (do not reveal whether user exists)
+  const user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) {
+    // Return silently to avoid account enumeration
+    return;
+  }
+
+  // Create a secure token and store its hash
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+  user.set("passwordResetToken", hashedToken);
+  user.set("passwordResetExpires", new Date(Date.now() + 60 * 60 * 1000)); // 1 hour
+
+  await user.save();
+
+  // Send password reset email with the raw token
+  await sendPasswordResetEmail(user.email, resetToken);
+};
+
+export const resetPassword = async (token: string, newPassword: string) => {
+  if (!token) throw new Error("Invalid or missing token");
+  if (!newPassword || String(newPassword).length < 6) throw new Error("Password must be at least 6 characters");
+
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await User.findOne({
+    passwordResetToken: hashedToken,
+    passwordResetExpires: { $gt: new Date() },
+  }).select('+password');
+
+  if (!user) {
+    throw new Error("Token is invalid or has expired");
+  }
+
+  user.password = newPassword;
+  user.passwordResetToken = undefined as any;
+  user.passwordResetExpires = undefined as any;
+
+  await user.save();
 };
 
 // Optional: Refresh token database এ save করার function
