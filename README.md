@@ -1,26 +1,41 @@
 # Job Portal Server API
 
-Express + TypeScript + MongoDB backend for a multi-role job portal application.
+Production-ready backend API for a multi-role job portal platform, built with Express 5, TypeScript, and MongoDB.
 
-## Features
+## Overview
 
-- Authentication with JWT and refresh token flow
-- Candidate, recruiter, and admin profile management
-- Job posting, application, and recruiter review workflow
-- Resume upload support
-- Payment, audit log, notification, and messaging modules
-- Postman collection for end-to-end API testing workflow
+This service powers candidate, recruiter, and admin workflows, including authentication, job lifecycle management, applications, messaging, notifications, analytics, and resume processing.
 
-## Tech Stack
+## Key Features
 
-- Node.js
+- JWT-based authentication with refresh token support
+- Role-based access for candidate, recruiter, and admin users
+- Job posting and application workflow
+- Resume upload and resume-related APIs
+- Messaging, notifications, audit logs, and analytics endpoints
+- Google OAuth login flow
+- Postman collections for manual API testing
+
+## Technology Stack
+
+- Node.js (supported: 20 or 22)
 - Express 5
 - TypeScript
-- MongoDB with Mongoose
-- JWT authentication
-- Multer / Cloudinary
+- MongoDB + Mongoose
+- Passport (Google OAuth)
+- Multer + Cloudinary
+- Redis (optional, for cache/queue related workflows)
 
-## Getting Started
+## Project Structure
+
+- `src/server.ts`: server bootstrap
+- `src/app.ts`: middleware, CORS, health checks, and route mounting
+- `src/app/routes/index.ts`: API route composition for `/api/v1`
+- `src/app/modules/*`: domain modules (auth, job, application, profile, etc.)
+- `src/app/config/*`: environment, DB, JWT, mail, and integration configs
+- `api/index.ts`: Vercel serverless entry
+
+## Quick Start
 
 ### 1. Install dependencies
 
@@ -28,55 +43,74 @@ Express + TypeScript + MongoDB backend for a multi-role job portal application.
 npm install
 ```
 
-### 2. Create environment file
+### 2. Configure environment variables
 
-Copy `.env.example` to `.env` and update the values.
+Create `.env` from `.env.example` and update values for your environment.
 
-### 3. Run in development
+```bash
+copy .env.example .env
+```
+
+### 3. Run development server
 
 ```bash
 npm run dev
 ```
 
-### 4. Build for production
+### 4. Build and run production mode
 
 ```bash
 npm run build
 npm start
 ```
 
-## Available Scripts
+## NPM Scripts
 
-- `npm run dev`: start the development server with hot reload
-- `npm run build`: compile TypeScript into `dist`
-- `npm run typecheck`: run TypeScript type checking without emitting files
-- `npm run lint`: lint the source tree
-- `npm test`: currently mapped to `typecheck`
+- `npm run dev`: run with hot reload using ts-node-dev
+- `npm run build`: compile TypeScript to `dist`
+- `npm run typecheck`: run TypeScript checks without emitting files
+- `npm run lint`: lint source files in `src`
+- `npm test`: currently mapped to `npm run typecheck`
 
-## Core Environment Variables
+## Environment Variables
 
-- `PORT`: application port
-- `DB_URL`: preferred MongoDB connection string
-- `DB_URI`: supported alias for MongoDB connection string
-- `MONGODB_URI`: supported alias for MongoDB connection string
-- `JWT_SECRET`: preferred JWT signing secret
-- `JWT_ACCESS_SECRET`: supported alias for JWT secret
-- `FRONTEND_URL`: frontend origin for CORS
-- `CLIENT_URL`: supported alias for frontend origin
-- `GOOGLE_CLIENT_ID`: Google OAuth client ID
-- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
-- `GOOGLE_CALLBACK_URL`: OAuth callback URL (default: `http://localhost:5000/api/v1/auth/google/callback`)
+The app accepts aliases for a few variables to reduce configuration mistakes.
 
-## Health Endpoints
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `NODE_ENV` | No | Runtime mode (`development` by default) |
+| `PORT` | No | HTTP port (default: `5000`) |
+| `DB_URL` | Yes | Primary MongoDB connection string |
+| `DB_URI` | No | Alias of `DB_URL` |
+| `MONGODB_URI` | No | Alias of `DB_URL` |
+| `JWT_SECRET` | Yes | Access token signing secret |
+| `JWT_ACCESS_SECRET` | No | Alias of `JWT_SECRET` |
+| `JWT_REFRESH_SECRET` | Yes | Refresh token signing secret |
+| `FRONTEND_URL` | Yes | Main frontend origin for CORS |
+| `CLIENT_URL` | No | Alias of `FRONTEND_URL` |
+| `EXPRESS_SESSION_SECRET` | Yes | Session middleware secret |
+| `GOOGLE_CLIENT_ID` | Optional | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth client secret |
+| `GOOGLE_CALLBACK_URL` | Optional | OAuth callback URL |
+| `CLOUDINARY_CLOUD_NAME` | Optional | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Optional | Cloudinary key |
+| `CLOUDINARY_API_SECRET` | Optional | Cloudinary secret |
+| `SMTP_HOST` | Optional | SMTP host |
+| `SMTP_PORT` | Optional | SMTP port |
+| `SMTP_USER` | Optional | SMTP username |
+| `SMTP_PASS` | Optional | SMTP password |
+| `SMTP_FROM` | Optional | Default sender email |
+| `REDIS_HOST` | Optional | Redis host |
+| `REDIS_PORT` | Optional | Redis port |
+| `REDIS_PASSWORD` | Optional | Redis password |
 
-- `GET /health`
-- `GET /api/v1/health`
+See `.env.example` for the complete list, including payment provider keys and optional admin bootstrap variables.
 
-## API Base URL
+## Base URL and Health Checks
 
-```text
-http://localhost:5000/api/v1
-```
+- Base API URL: `http://localhost:5000/api/v1`
+- Health endpoint: `GET /health`
+- Versioned health endpoint: `GET /api/v1/health`
 
 ## Main Route Groups
 
@@ -90,62 +124,53 @@ http://localhost:5000/api/v1
 - `/audit`
 - `/company`
 - `/agency`
+- `/salary`
 - `/messages`
 - `/notifications`
+- `/resume`
+- `/career-resources`
+- `/analytics`
 
-## Google OAuth Login
+## Google OAuth
 
-Endpoints:
+- `GET /api/v1/auth/google`: start OAuth flow
+- `GET /api/v1/auth/google?redirect=/dashboard`: start flow with frontend redirect hint
+- `GET /api/v1/auth/google/callback`: handle callback and sign in/up user
+- `GET /api/v1/auth/google/callback?mode=json`: return payload as JSON instead of redirect
 
-- `GET /api/v1/auth/google`: starts Google OAuth flow
-- `GET /api/v1/auth/google?redirect=/dashboard`: starts Google OAuth flow and sends the user back to a custom frontend path after login
-- `GET /api/v1/auth/google/callback`: handles callback, logs user in or creates a new user
-- `GET /api/v1/auth/google/callback?mode=json`: returns the auth payload as JSON instead of redirecting
+## File Upload Notes
 
-Behavior:
+Profile image updates are supported through profile update routes with `multipart/form-data`.
 
-- Existing user with same email: user is logged in
-- New email: user is created with only `email`, `name`, and `avatar`
-- No Google password is stored
-- The callback issues the same access token and refresh token pair used by normal login
-- If no frontend redirect path is supplied, the user is sent to the frontend root path
+- Candidate: `PUT /api/v1/candidate`
+- Recruiter: `PUT /api/v1/recruiter/profile`
+- Admin: `PUT /api/v1/admin`
 
-## Profile Image Upload
-
-Profile images are uploaded through the existing profile update routes using `multipart/form-data`.
-
-Supported endpoints:
-
-- `PUT /api/v1/candidate` for candidate profile updates
-- `PUT /api/v1/recruiter/profile` for recruiter profile updates
-- `PUT /api/v1/admin` for admin profile updates
-
-Accepted file field names:
+Accepted image field names:
 
 - `avatar`
 - `profilePicture`
 - `image`
 - `file`
 
-Rules:
+Constraints:
 
-- Image only: `jpg`, `jpeg`, `png`, `webp`, `gif`
+- Allowed formats: `jpg`, `jpeg`, `png`, `webp`, `gif`
 - Maximum size: `3MB`
-- Send the image together with any other profile fields in the same request
 
 ## Postman Collections
 
-- `job-server-api-postman_collection.json`
 - `job-portal-full-api-collection.postman_collection.json`
+- `RESUME_UPLOAD_TESTS.postman_collection.json`
 
-## Vercel Deployment
+## Deployment
 
-This repository is configured for API-only deployment on Vercel through [`api/index.ts`](api/index.ts) and [`vercel.json`](vercel.json).
+This repository supports API-only deployment on Vercel using `api/index.ts` and `vercel.json`.
 
-Note: Socket.IO/realtime features are not supported on Vercel serverless functions. Use the Vercel deployment only for the REST API.
+Important: Socket.IO and long-lived realtime connections are not supported on standard Vercel serverless functions. Use dedicated infrastructure for realtime workloads.
 
-## Notes
+## Operational Notes
 
-- Use role-specific accounts when testing protected routes.
-- The server now accepts multiple env aliases for database and JWT setup to reduce configuration errors.
-- Some modules depend on third-party services such as Cloudinary, SMTP, Redis, and payment providers. Configure only the services you use.
+- Use role-specific test accounts for protected endpoints.
+- Configure only the external integrations you need (Cloudinary, SMTP, Redis, payment providers).
+- Keep production secrets out of version control and rotate credentials periodically.

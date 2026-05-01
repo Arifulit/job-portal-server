@@ -26,28 +26,6 @@ export const getAllUsersFromDBController = async (req: Request, res: Response) =
   }
 };
 
-// export const getAllUsersController = async (req: Request, res: Response) => {
-//   try {
-//     const users = await userService.getAllUsers();
-    
-//     res.status(200).json({
-//       success: true,
-//       message: "Users retrieved successfully",
-//       data: users
-//     });
-//   } catch (error: any) {
-//     console.error("Error in getAllUsersController:", error);
-//     res.status(500).json({
-//       success: false,
-//       message: error.message || "Error retrieving users",
-//       error: {
-//         code: "USER_FETCH_ERROR",
-//         description: "An error occurred while fetching users"
-//       }
-//     });
-//   }
-// };
-
 
 export const getAllUsersController = async (req: Request, res: Response) => {
   try {
