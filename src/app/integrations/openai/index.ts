@@ -4,12 +4,12 @@ import { env } from "../../config/env";
 let openaiClient: OpenAI | null = null;
 
 export function getOpenAIClient(): OpenAI {
-  if (!env.OPENAI_API_KEY) {
+  if (!env.GEMINI_API_KEY) {
     throw new Error("OpenAI API key is missing");
   }
 
   if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    openaiClient = new OpenAI({ apiKey: env.GEMINI_API_KEY });
   }
 
   return openaiClient;

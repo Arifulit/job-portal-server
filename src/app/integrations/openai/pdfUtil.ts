@@ -1,3 +1,5 @@
+import fs from "fs";
+
 // Resume PDF parsing utility
 
 // pdf-parse import নিয়ে সমস্যা হলে এই পদ্ধতি ব্যবহার করুন।

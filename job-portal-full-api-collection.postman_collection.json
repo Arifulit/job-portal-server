@@ -661,6 +661,31 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"TechCorp Bangladesh\",\n  \"description\": \"Leading software company in Bangladesh\",\n  \"website\": \"https://techcorp.com.bd\",\n  \"location\": \"Dhaka, Bangladesh\",\n  \"industry\": \"Software\",\n  \"size\": \"50-100\",\n  \"logo\": \"https://example.com/logo.png\",\n  \"email\": \"info@techcorp.com.bd\",\n  \"phone\": \"01912345678\"\n}"
+        ,
+        {
+          "name": "Get Company Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/company/{{companyId}}/profile"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "const json = pm.response.json();",
+                  "pm.test(\"Has overview\", function () { pm.expect(json.data).to.have.property('overview'); });",
+                  "pm.test(\"Has ratingSummary\", function () { pm.expect(json.data).to.have.property('ratingSummary'); });",
+                  "pm.test(\"Has reviews\", function () { pm.expect(json.data).to.have.property('reviews'); });",
+                  "pm.test(\"Has openPositions\", function () { pm.expect(json.data).to.have.property('openPositions'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
             },
             "url": "{{baseUrl}}/company/create"
           },

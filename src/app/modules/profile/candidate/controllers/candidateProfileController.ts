@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import * as candidateProfileService from "../services/candidateProfileService";
 import { CandidateProfile } from "../models/CandidateProfile";
+import { Resume } from "../models/Resume";
 import { User } from "../../../auth/models/User";
 import cloudinary from "../../../../config/cloudinary";
 
@@ -79,6 +80,24 @@ const getUploadedAvatarFile = (req: Request): Express.Multer.File | undefined =>
   );
 };
 
+const getUploadedResumeFile = (req: Request): Express.Multer.File | undefined => {
+  const uploadedFile = (req as any).file as Express.Multer.File | undefined;
+  const uploadedFiles = (req as any).files as
+    | Record<string, Express.Multer.File[]>
+    | Express.Multer.File[]
+    | undefined;
+
+  if (uploadedFile) {
+    return uploadedFile;
+  }
+
+  if (Array.isArray(uploadedFiles)) {
+    return uploadedFiles[0];
+  }
+
+  return uploadedFiles?.resume?.[0] || uploadedFiles?.file?.[0];
+};
+
 const uploadAvatarToCloudinary = async (file: Express.Multer.File): Promise<string> => {
   try {
     const cloudResult = await cloudinary.uploader.upload(file.path, {
@@ -93,6 +112,46 @@ const uploadAvatarToCloudinary = async (file: Express.Multer.File): Promise<stri
       fs.unlink(file.path, () => {});
     }
   }
+};
+
+const uploadResumeToCloudinary = async (file: Express.Multer.File): Promise<{ fileUrl: string; fileName: string }> => {
+  try {
+    const cloudResult = await cloudinary.uploader.upload(file.path, {
+      folder: "job-portal/resumes",
+      resource_type: "raw",
+      type: "upload",
+      access_mode: "public",
+    });
+
+    return {
+      fileUrl: cloudResult.secure_url || cloudResult.url,
+      fileName: file.originalname || file.filename,
+    };
+  } finally {
+    if (file.path) {
+      fs.unlink(file.path, () => {});
+    }
+  }
+};
+
+const syncProfileResume = async (profileId: string, fileUrl: string, fileName: string) => {
+  const resume = await Resume.findOneAndUpdate(
+    { candidate: profileId },
+    {
+      $set: {
+        fileUrl,
+        fileName,
+        candidate: profileId,
+      },
+    },
+    { new: true, upsert: true, runValidators: true },
+  );
+
+  if (resume?._id) {
+    await CandidateProfile.findByIdAndUpdate(profileId, { $set: { resume: resume._id } }, { new: false });
+  }
+
+  return resume;
 };
 
 export const createCandidateProfileController = async (req: Request, res: Response) => {
@@ -112,10 +171,16 @@ export const createCandidateProfileController = async (req: Request, res: Respon
 
     const userId = req.user.id;
     const avatarFile = getUploadedAvatarFile(req);
+    const resumeFile = getUploadedResumeFile(req);
     let uploadedAvatarUrl: string | undefined;
+    let uploadedResume: { fileUrl: string; fileName: string } | undefined;
 
     if (avatarFile) {
       uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
+
+    if (resumeFile) {
+      uploadedResume = await uploadResumeToCloudinary(resumeFile);
     }
 
     console.log("🟦 User authenticated, userId:", userId);
@@ -147,6 +212,14 @@ export const createCandidateProfileController = async (req: Request, res: Respon
 
     if (uploadedAvatarUrl) {
       await User.findByIdAndUpdate(userId, { $set: { avatar: uploadedAvatarUrl } }, { new: false });
+    }
+
+    if (uploadedResume) {
+      const savedProfile = await candidateProfileService.getCandidateProfile(userId);
+      const profileId = String((savedProfile as any)?._id || (profile as any)?._id || "");
+      if (profileId) {
+        await syncProfileResume(profileId, uploadedResume.fileUrl, uploadedResume.fileName);
+      }
     }
 
     const latestProfile = await candidateProfileService.getCandidateProfile(userId);
@@ -303,9 +376,15 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
     const userId = req.user.id;
     const avatarFile = getUploadedAvatarFile(req);
     let uploadedAvatarUrl: string | undefined;
+    const resumeFile = getUploadedResumeFile(req);
+    let uploadedResume: { fileUrl: string; fileName: string } | undefined;
 
     if (avatarFile) {
       uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+    }
+
+    if (resumeFile) {
+      uploadedResume = await uploadResumeToCloudinary(resumeFile);
     }
 
     console.log("🟦 User authenticated, userId:", userId);
@@ -330,6 +409,12 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
       };
       
       profile = await candidateProfileService.createCandidateProfile(profileData);
+
+      if (uploadedResume && (profile as any)?._id) {
+        await syncProfileResume(String((profile as any)._id), uploadedResume.fileUrl, uploadedResume.fileName);
+        profile = await candidateProfileService.getCandidateProfile(userId);
+      }
+
       console.log("✅ Controller: New profile created successfully");
       return res.status(201).json({
         success: true,
@@ -341,6 +426,10 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
     // If profile exists, update it
     console.log("ℹ️  Updating existing profile");
     await candidateProfileService.updateCandidateProfile(userId, updatePayload);
+
+    if (uploadedResume && (profile as any)?._id) {
+      await syncProfileResume(String((profile as any)._id), uploadedResume.fileUrl, uploadedResume.fileName);
+    }
 
     if (updatePayload.name !== undefined || updatePayload.email !== undefined) {
       const userUpdates: Record<string, string> = {};

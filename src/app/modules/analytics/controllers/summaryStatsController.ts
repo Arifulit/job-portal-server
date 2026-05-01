@@ -63,7 +63,7 @@ export const getSummaryStats = async (_req: Request, res: Response) => {
         totalApplications: totalApplications >= 1000 ? `${Math.floor(totalApplications / 1000)}K+` : `${totalApplications}`
       }
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("[SUMMARY_STATS_ERROR]", err);
     res.status(500).json({ success: false, message: "Failed to fetch stats", error: err?.message || err });
   }

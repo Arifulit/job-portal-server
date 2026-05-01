@@ -12,16 +12,17 @@ import {
 } from "../controllers/candidateProfileController";
 import { getRecommendationsController } from "../controllers/recommendationController";
 import authMiddleware, { optionalAuth } from "../../../../middleware/auth";
-import { avatarUpload } from "../../../../middleware/upload";
+import { candidateProfileUpload } from "../../../../middleware/upload";
 
 const router = Router();
 
-const avatarUploadMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  avatarUpload.fields([
+const candidateProfileUploadMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  candidateProfileUpload.fields([
     { name: "avatar", maxCount: 1 },
     { name: "profilePicture", maxCount: 1 },
     { name: "image", maxCount: 1 },
     { name: "file", maxCount: 1 },
+    { name: "resume", maxCount: 1 },
   ])(req, res, (error: any) => {
     if (!error) {
       next();
@@ -53,12 +54,12 @@ router.get("/recommendations", authMiddleware(["candidate"]), asyncHandler(getRe
 router.get("/:userId", optionalAuth, asyncHandler(getCandidateProfileController));
 
 // POST /api/v1/candidate/profile
-router.post("/", authMiddleware(["Candidate"]), avatarUploadMiddleware, asyncHandler(createCandidateProfileController));
+router.post("/", authMiddleware(["candidate"]), candidateProfileUploadMiddleware, asyncHandler(createCandidateProfileController));
 
 // PUT /api/v1/candidate/profile - Update current authenticated candidate profile
-router.put("/", authMiddleware(["Candidate"]), avatarUploadMiddleware, asyncHandler(updateCurrentCandidateProfileController));
+router.put("/", authMiddleware(["candidate"]), candidateProfileUploadMiddleware, asyncHandler(updateCurrentCandidateProfileController));
 
 // PUT /api/v1/candidate/profile/:userId
-router.put("/:userId", authMiddleware(["Candidate"]), avatarUploadMiddleware, asyncHandler(updateCandidateProfileController));
+router.put("/:userId", authMiddleware(["candidate"]), candidateProfileUploadMiddleware, asyncHandler(updateCandidateProfileController));
 
 export default router;

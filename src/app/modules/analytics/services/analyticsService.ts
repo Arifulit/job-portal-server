@@ -63,7 +63,7 @@ export const rankApplicantsForJob = async (jobId: string) => {
     const analysis = await analyzeResumeWithOpenAI(resumeText);
     // Score: skills match + experience (simple version)
     const jobSkills = job.skills || [];
-    const matchedSkills = analysis.skills?.filter((s: string) => jobSkills.includes(s)) || [];
+    const matchedSkills = analysis.extractedSkills?.filter((s: string) => jobSkills.includes(s)) || [];
     const skillScore = matchedSkills.length / (jobSkills.length || 1);
     const totalScore = Math.round((skillScore * 0.7 + (analysis.score || 0) / 100 * 0.3) * 100);
     ranked.push({
@@ -95,7 +95,7 @@ export const generateResumeFromProfile = async (userId: string) => {
   const profile = await CandidateProfile.findOne({ user: userId }).lean();
   if (!profile) throw new Error("Profile not found");
   // Use OpenAI to generate resume text
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey: process.env.GEMINI_API_KEY });
   const prompt = `Generate a professional resume in markdown format for the following profile.\nName: ${profile.name}\nSkills: ${(profile.skills || []).join(", ")}\nExperience: ${(profile.experience || []).map(e => `${e.role} at ${e.company}`).join("; ")}\nEducation: ${(profile.education || []).map(e => `${e.degree} at ${e.institution}`).join("; ")}`;
   const completion = await openai.chat.completions.create({
     model: "gpt-3.5-turbo",
@@ -118,7 +118,7 @@ export const predictSalary = async (userId: string, jobId?: string) => {
   if (jobId) job = await Job.findById(jobId).lean();
   if (!profile) throw new Error("Profile not found");
   // Use OpenAI to predict salary
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const openai = new OpenAI({ apiKey: process.env.GEMINI_API_KEY });
   const prompt = `Estimate a fair salary range for a candidate with the following profile${job ? ` applying for this job: ${job.title}, location: ${job.location}` : ""}.\nSkills: ${(profile.skills || []).join(", ")}\nExperience: ${(profile.experience || []).map(e => `${e.role} at ${e.company}`).join("; ")}\nLocation: ${profile.address || "N/A"}`;
   const completion = await openai.chat.completions.create({
     model: "gpt-3.5-turbo",

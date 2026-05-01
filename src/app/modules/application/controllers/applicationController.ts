@@ -17,6 +17,7 @@ import cloudinary from "../../../config/cloudinary";
 import { env } from "../../../config/env";
 import fs from "fs";
 import axios from "axios";
+import { getSkillGapForUserAndJob } from "../../analytics/services/analyticsService";
 
 type UserRole = 'admin' | 'recruiter' | 'candidate' | 'employer' | 'user';
 
@@ -371,9 +372,7 @@ export const applyJob = async (req: AuthenticatedRequest, res: Response) => {
 
     // Application save করো
     const application = await applicationService.applyJob(applicationData);
-    const applicationObj: any = (application as any).toObject
-      ? (application as any).toObject()
-      : application;
+    const applicationObj: any = (application as any).toObject ? (application as any).toObject() : application;
 
     const candidateUser = await User.findById(req.user.id).select("name email").lean();
     if (candidateUser?.email) {
@@ -402,6 +401,15 @@ export const applyJob = async (req: AuthenticatedRequest, res: Response) => {
     const resumeLinks = buildResumeLinks(applicationObj?.resume);
     applicationObj.resume = resumeLinks.sourceUrl;
     applicationObj.downloadUrl = uploadedDownloadUrl || resumeLinks.downloadUrl;
+
+    // Attach skill gap between candidate and job to response
+    try {
+      const gap = await getSkillGapForUserAndJob(req.user.id, jobToApply as string);
+      applicationObj.missingSkills = Array.isArray(gap?.missingSkills) ? gap.missingSkills : [];
+    } catch (gapErr: any) {
+      console.warn("Failed to compute skill gap:", gapErr?.message || gapErr);
+      applicationObj.missingSkills = [];
+    }
 
     return res.status(201).json({
       success: true,

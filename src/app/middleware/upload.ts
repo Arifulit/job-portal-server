@@ -92,3 +92,36 @@ export const avatarUpload = multer({
     files: 1,
   },
 });
+
+const allowedProfileResumeMimeTypes = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+]);
+
+const allowedProfileResumeExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]);
+
+const profileMediaFileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const isAllowedMime = allowedProfileResumeMimeTypes.has(file.mimetype);
+  const isAllowedExt = allowedProfileResumeExtensions.has(ext);
+
+  if (isAllowedMime || isAllowedExt) {
+    cb(null, true);
+    return;
+  }
+
+  cb(new Error("Only image files and PDF resumes are allowed for candidate profile upload"), false);
+};
+
+export const candidateProfileUpload = multer({
+  storage,
+  fileFilter: profileMediaFileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 2,
+  },
+});

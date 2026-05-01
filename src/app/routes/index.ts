@@ -16,6 +16,7 @@ import { authMiddleware } from "../middleware/auth";
 
 import careerResourcesRoutes from "../modules/careerResources/routes";
 import summaryStatsRoutes from "../modules/analytics/routes/summaryStatsRoutes";
+import salaryRoutes from "../modules/salary/routes/salaryRoutes";
 
 import resumeRoutes from "../modules/resume/routes/resumeRoutes";
 
@@ -48,6 +49,7 @@ router.use("/payments", paymentRoutes);
 router.use("/audit", auditRoutes);
 router.use("/company", companyRoutes);
 router.use("/agency", recruitmentAgencyRoutes);
+router.use("/salary", salaryRoutes);
 router.use("/messages", messageRoutes);
 router.use("/notifications", notificationRoutes);
 
