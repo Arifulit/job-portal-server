@@ -48,6 +48,7 @@ export const env = {
   SMTP_USER: process.env.SMTP_USER,
   SMTP_PASS: process.env.SMTP_PASS,
   SMTP_FROM: process.env.SMTP_FROM || 'noreply@careercode.com',
+  SUPPORT_EMAIL: process.env.SUPPORT_EMAIL || 'ariful.iit@gmail.com',
 
   // OpenAI
   GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",

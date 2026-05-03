@@ -7,7 +7,7 @@ export const getCareerResourceById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: "Resource not found" });
     }
     res.json({ success: true, data: resource });
-  } catch (err) {
+  } catch {
     res.status(400).json({ success: false, message: "Invalid resource id" });
   }
 };
@@ -19,7 +19,7 @@ export const getCareerResources = async (req: Request, res: Response) => {
   try {
     const resources = await CareerResource.find().sort({ createdAt: -1 });
     res.json({ success: true, data: resources });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, message: "Failed to fetch resources" });
   }
 };
@@ -33,7 +33,7 @@ export const postCareerResource = async (req: Request, res: Response) => {
   try {
     const newResource = await CareerResource.create({ category, title, description });
     res.status(201).json({ success: true, data: newResource });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, message: "Failed to create resource" });
   }
 };

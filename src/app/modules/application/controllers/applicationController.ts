@@ -17,7 +17,6 @@ import cloudinary from "../../../config/cloudinary";
 import { env } from "../../../config/env";
 import fs from "fs";
 import axios from "axios";
-import { getSkillGapForUserAndJob } from "../../analytics/services/analyticsService";
 
 type UserRole = 'admin' | 'recruiter' | 'candidate' | 'employer' | 'user';
 
@@ -402,15 +401,6 @@ export const applyJob = async (req: AuthenticatedRequest, res: Response) => {
     applicationObj.resume = resumeLinks.sourceUrl;
     applicationObj.downloadUrl = uploadedDownloadUrl || resumeLinks.downloadUrl;
 
-    // Attach skill gap between candidate and job to response
-    try {
-      const gap = await getSkillGapForUserAndJob(req.user.id, jobToApply as string);
-      applicationObj.missingSkills = Array.isArray(gap?.missingSkills) ? gap.missingSkills : [];
-    } catch (gapErr: any) {
-      console.warn("Failed to compute skill gap:", gapErr?.message || gapErr);
-      applicationObj.missingSkills = [];
-    }
-
     return res.status(201).json({
       success: true,
       message: "Application submitted successfully",
@@ -521,10 +511,13 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
     const userRole = req.user.role;
     const userId = req.user.id || toIdString((req.user as any)?._id) || "";
 
-    // Case-insensitive status normalize - recruiters can set: Applied, Reviewed, Rejected, Accepted
-    const statusMap: Record<string, "Applied" | "Reviewed" | "Rejected" | "Accepted"> = {
+    // Case-insensitive status normalize - recruiters can set: Applied, Reviewed, Shortlisted, Interviewed, Rejected, Accepted
+    const statusMap: Record<string, "Applied" | "Reviewed" | "Shortlisted" | "Interviewed" | "Rejected" | "Accepted"> = {
       applied: "Applied",
       reviewed: "Reviewed",
+      shortlisted: "Shortlisted",
+      interview: "Interview",
+      interviewed: "Interview",
       rejected: "Rejected",
       accepted: "Accepted",
       hired: "Accepted",
@@ -538,7 +531,7 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
     if (status && !normalizedStatus) {
       return res.status(400).json({
         success: false,
-        message: "Invalid status. Must be one of: Applied, Reviewed, Rejected, Accepted",
+        message: "Invalid status. Must be one of: Applied, Reviewed, Shortlisted, Interview, Rejected, Accepted",
       });
     }
 
@@ -585,7 +578,7 @@ export const updateApplication = async (req: AuthenticatedRequest, res: Response
           await sendApplicationStatusUpdatedEmail({
             to: candidateUser.email,
             candidateName: candidateUser.name,
-            status: application.status as "Applied" | "Reviewed" | "Rejected" | "Accepted",
+            status: application.status as "Applied" | "Reviewed" | "Shortlisted" | "Interviewed" | "Rejected" | "Accepted",
             jobTitle: (application as any).job?.title,
           });
         } catch (mailError: any) {

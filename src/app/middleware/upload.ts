@@ -2,6 +2,7 @@
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { Request } from "express";
 
 const uploadsDir = process.env.VERCEL ? "/tmp/uploads" : path.join(process.cwd(), "uploads");
 
@@ -28,7 +29,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+const fileFilter = (req: Request, file: Express.Multer.File, cb: (error: Error | null, value?: boolean) => void) => {
   // For resume uploads, only accept PDF files
   if (file.mimetype === "application/pdf") {
     cb(null, true);
@@ -40,7 +41,7 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
 export const upload = multer({ storage, fileFilter });
 export const imageUpload = upload;
 
-const resumeFileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+const resumeFileFilter = (req: Request, file: Express.Multer.File, cb: (error: Error | null, value?: boolean) => void) => {
   const isPdfMime = file.mimetype === "application/pdf";
   const isPdfByExt = path.extname(file.originalname || "").toLowerCase() === ".pdf";
 
@@ -71,7 +72,7 @@ const allowedAvatarMimeTypes = new Set([
 
 const allowedAvatarExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
 
-const avatarFileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+const avatarFileFilter = (req: Request, file: Express.Multer.File, cb: (error: Error | null, value?: boolean) => void) => {
   const ext = path.extname(file.originalname || "").toLowerCase();
   const isAllowedMime = allowedAvatarMimeTypes.has(file.mimetype);
   const isAllowedExt = allowedAvatarExtensions.has(ext);
@@ -104,7 +105,7 @@ const allowedProfileResumeMimeTypes = new Set([
 
 const allowedProfileResumeExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"]);
 
-const profileMediaFileFilter = (req: any, file: Express.Multer.File, cb: any) => {
+const profileMediaFileFilter = (req: Request, file: Express.Multer.File, cb: (error: Error | null, value?: boolean) => void) => {
   const ext = path.extname(file.originalname || "").toLowerCase();
   const isAllowedMime = allowedProfileResumeMimeTypes.has(file.mimetype);
   const isAllowedExt = allowedProfileResumeExtensions.has(ext);

@@ -13,11 +13,11 @@ export const getAllUsersFromDBController = async (req: Request, res: Response) =
         total: users.length
       }
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in getAllUsersFromDBController:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Error retrieving all users",
+      message: (error as Error).message || "Error retrieving all users",
       error: {
         code: "ALL_USERS_FETCH_ERROR",
         description: "An error occurred while fetching all users"
@@ -36,11 +36,11 @@ export const getAllUsersController = async (req: Request, res: Response) => {
       message: "Users retrieved successfully",
       data: users
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in getAllUsersController:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Error retrieving users",
+      message: (error as Error).message || "Error retrieving users",
       error: {
         code: "USERS_FETCH_ERROR",
         description: "An error occurred while fetching users"
@@ -61,11 +61,11 @@ export const getAllCandidatesController = async (req: Request, res: Response) =>
         total: candidates.length
       }
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in getAllCandidatesController:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Error retrieving candidates",
+      message: (error as Error).message || "Error retrieving candidates",
       error: {
         code: "CANDIDATE_FETCH_ERROR",
         description: "An error occurred while fetching candidates"
@@ -105,11 +105,11 @@ export const impersonateUserController = async (req: Request, res: Response) => 
       message: result.message,
       data: result.data
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in impersonateUserController:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Error during user impersonation",
+      message: (error as Error).message || "Error during user impersonation",
       error: {
         code: "USER_IMPERSONATION_ERROR",
         description: "An error occurred while trying to impersonate the user"
@@ -128,11 +128,11 @@ export const suspendUserController = async (req: Request, res: Response) => {
       message: result.message,
       data: result.data
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in suspendUserController:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Error suspending user",
+      message: (error as Error).message || "Error suspending user",
       error: {
         code: "USER_SUSPEND_ERROR",
         description: "An error occurred while suspending the user"
@@ -164,29 +164,29 @@ export const updateUserRoleController = async (req: Request, res: Response) => {
       message: result.message,
       data: result.data
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in updateUserRoleController:", error);
     
     let statusCode = 500;
     let errorCode = "ROLE_UPDATE_ERROR";
     
-    if (error.message.includes("User not found")) {
+    if ((error as Error).message.includes("User not found")) {
       statusCode = 404;
       errorCode = "USER_NOT_FOUND";
-    } else if (error.message.includes("Cannot change role of a suspended user")) {
+    } else if ((error as Error).message.includes("Cannot change role of a suspended user")) {
       statusCode = 400;
       errorCode = "USER_SUSPENDED";
-    } else if (error.message.includes("Invalid role")) {
+    } else if ((error as Error).message.includes("Invalid role")) {
       statusCode = 400;
       errorCode = "INVALID_ROLE";
     }
     
     res.status(statusCode).json({
       success: false,
-      message: error.message || "Error updating user role",
+      message: (error as Error).message || "Error updating user role",
       error: {
         code: errorCode,
-        description: error.message || "An error occurred while updating the user role"
+        description: (error as Error).message || "An error occurred while updating the user role"
       }
     });
   }
@@ -197,7 +197,7 @@ export const setRecruiterApprovalController = async (req: Request, res: Response
     const { userId } = req.params;
     const { approved = true } = req.body || {};
 
-    const adminId = (req.user as any)?._id?.toString() || (req.user as any)?.id?.toString();
+    const adminId = (req.user as Record<string, unknown>)?._id?.toString() || (req.user as Record<string, unknown>)?.id?.toString();
     if (!adminId) {
       return res.status(401).json({
         success: false,
@@ -207,15 +207,15 @@ export const setRecruiterApprovalController = async (req: Request, res: Response
 
     const result = await userService.setRecruiterApproval(adminId, userId, Boolean(approved));
     return res.status(200).json(result);
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     let statusCode = 500;
-    if (error.message?.includes('User not found')) statusCode = 404;
-    if (error.message?.includes('Only admin')) statusCode = 403;
-    if (error.message?.includes('not a recruiter')) statusCode = 400;
+    if ((error as Error).message?.includes('User not found')) statusCode = 404;
+    if ((error as Error).message?.includes('Only admin')) statusCode = 403;
+    if ((error as Error).message?.includes('not a recruiter')) statusCode = 400;
 
     return res.status(statusCode).json({
       success: false,
-      message: error.message || 'Failed to update recruiter approval status'
+      message: (error as Error).message || 'Failed to update recruiter approval status'
     });
   }
 };
@@ -225,7 +225,7 @@ export const rejectRecruiterController = async (req: Request, res: Response) => 
     const { userId } = req.params;
     const { suspend = true } = req.body || {};
 
-    const adminId = (req.user as any)?._id?.toString() || (req.user as any)?.id?.toString();
+    const adminId = (req.user as Record<string, unknown>)?._id?.toString() || (req.user as Record<string, unknown>)?.id?.toString();
     if (!adminId) {
       return res.status(401).json({
         success: false,
@@ -235,15 +235,15 @@ export const rejectRecruiterController = async (req: Request, res: Response) => 
 
     const result = await userService.rejectRecruiter(adminId, userId, Boolean(suspend));
     return res.status(200).json(result);
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     let statusCode = 500;
-    if (error.message?.includes('User not found')) statusCode = 404;
-    if (error.message?.includes('Only admin')) statusCode = 403;
-    if (error.message?.includes('not a recruiter')) statusCode = 400;
+    if ((error as Error).message?.includes('User not found')) statusCode = 404;
+    if ((error as Error).message?.includes('Only admin')) statusCode = 403;
+    if ((error as Error).message?.includes('not a recruiter')) statusCode = 400;
 
     return res.status(statusCode).json({
       success: false,
-      message: error.message || 'Failed to reject recruiter'
+      message: (error as Error).message || 'Failed to reject recruiter'
     });
   }
 };
@@ -260,11 +260,11 @@ export const getAllRecruitersController = async (req: Request, res: Response) =>
         total: recruiters.length
       }
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in getAllRecruitersController:", error);
     res.status(500).json({
       success: false,
-      message: error.message || "Error retrieving recruiters",
+      message: (error as Error).message || "Error retrieving recruiters",
       error: {
         code: "RECRUITER_FETCH_ERROR",
         description: "An error occurred while fetching recruiters"
@@ -281,11 +281,11 @@ export const getModerationOverviewController = async (req: Request, res: Respons
       message: 'Admin moderation overview retrieved successfully',
       data
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error('Error in getModerationOverviewController:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to load moderation overview'
+      message: (error as Error).message || 'Failed to load moderation overview'
     });
   }
 };
@@ -312,26 +312,26 @@ export const deleteUserController = async (req: Request, res: Response) => {
       message: result.message,
       data: result.data
     });
-  } catch (error: any) {
+  } catch (error: Error | unknown) {
     console.error("Error in deleteUserController:", error);
 
     let statusCode = 500;
     let errorCode = "USER_DELETE_ERROR";
 
-    if (error.message.includes("User not found")) {
+    if ((error as Error).message.includes("User not found")) {
       statusCode = 404;
       errorCode = "USER_NOT_FOUND";
-    } else if (error.message.includes("Cannot delete the last admin")) {
+    } else if ((error as Error).message.includes("Cannot delete the last admin")) {
       statusCode = 400;
       errorCode = "CANNOT_DELETE_LAST_ADMIN";
     }
 
     res.status(statusCode).json({
       success: false,
-      message: error.message || "Error deleting user",
+      message: (error as Error).message || "Error deleting user",
       error: {
         code: errorCode,
-        description: error.message || "An error occurred while deleting the user"
+        description: (error as Error).message || "An error occurred while deleting the user"
       }
     });
   }

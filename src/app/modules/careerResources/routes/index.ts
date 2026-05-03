@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { getCareerResources, postCareerResource, getCareerResourceById } from "../controllers/careerResourcesController";
-import { authMiddleware } from "../../../middleware/auth";
 
 const router = Router();
 

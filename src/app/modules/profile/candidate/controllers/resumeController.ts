@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import fs from "fs";
 import axios from "axios";
+import { analyzeResumeWithGemini } from "../../../../integrations/openai/resumeParser";
 import cloudinary from "../../../../config/cloudinary";
 import * as resumeService from "../services/resumeService";
 
@@ -219,6 +220,34 @@ export const uploadResumeController = async (req: Request, res: Response) => {
     console.log("✅ Resume uploaded successfully, ID:", resumeObj._id);
     console.log("🔗 FileUrl:", resumeObj.fileUrl);
     console.log("📥 DownloadUrl:", resumeObj.downloadUrl);
+
+    // Attempt to analyze resume via AI (non-blocking for upload)
+    (async () => {
+      try {
+        console.log("🔎 Starting resume analysis for:", resumeObj.fileUrl);
+        const fetchRes = await axios.get(resumeObj.fileUrl, { responseType: "arraybuffer", timeout: 20000 });
+        const buffer = Buffer.from(fetchRes.data);
+        const analysis = await analyzeResumeWithGemini(undefined, buffer, "application/pdf");
+
+        // Persist analysis results to resume document
+        try {
+          const updated = await resumeService.setResumeAnalysis(String(resumeObj._id), {
+            score: analysis.score,
+            scoreBreakdown: analysis.scoreBreakdown,
+            extractedSkills: analysis.extractedSkills,
+            missingSkills: analysis.missingSkills,
+            suggestions: analysis.suggestions,
+            strengths: analysis.strengths,
+          });
+          console.log("✅ Resume analysis saved for:", resumeObj._id);
+        } catch (persistErr: any) {
+          console.warn("⚠️ Failed to persist resume analysis:", persistErr.message || persistErr);
+        }
+      } catch (aiErr: any) {
+        console.warn("⚠️ Resume analysis failed:", aiErr?.message || aiErr);
+      }
+    })();
+
     res.status(201).json({ 
       success: true, 
       data: resumeObj,

@@ -7,11 +7,14 @@ import { User } from "../../../auth/models/User";
 const formatRecruiterProfileResponse = (profile: any) => {
   if (!profile) return profile;
 
+  const companyDetails = profile.company ?? null;
+
   return {
     ...profile,
     avatar: profile.avatar ?? profile.user?.avatar ?? "",
     biodata: profile.biodata ?? profile.bio ?? "",
     location: profile.location ?? "",
+    companyDetails,
   };
 };
 

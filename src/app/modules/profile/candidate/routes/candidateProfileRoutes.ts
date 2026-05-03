@@ -23,29 +23,32 @@ const candidateProfileUploadMiddleware = (req: Request, res: Response, next: Nex
     { name: "image", maxCount: 1 },
     { name: "file", maxCount: 1 },
     { name: "resume", maxCount: 1 },
-  ])(req, res, (error: any) => {
+  ])(req, res, (error: unknown) => {
     if (!error) {
       next();
       return;
     }
 
     if (error instanceof multer.MulterError) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: error.message,
         code: error.code,
       });
+      return;
     }
 
-    return res.status(400).json({
+    const errorMsg = error instanceof Error ? error.message : "Profile picture upload failed";
+    res.status(400).json({
       success: false,
-      message: error.message || "Profile picture upload failed",
+      message: errorMsg,
     });
   });
 };
 
 // GET /api/v1/candidate/profile - Get current user's candidate profile (if authenticated)
-router.get("/", optionalAuth, asyncHandler(getCurrentCandidateProfileController));
+ // GET /api/v1/candidate/profile - Get current user's candidate profile (authenticated candidate only)
+ router.get("/", authMiddleware(["candidate"]), asyncHandler(getCurrentCandidateProfileController));
 
 // GET /api/v1/candidate/profile/recommendations - AI job recommendations (authenticated candidate)
 router.get("/recommendations", authMiddleware(["candidate"]), asyncHandler(getRecommendationsController));

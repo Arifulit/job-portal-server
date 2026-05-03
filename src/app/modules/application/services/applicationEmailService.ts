@@ -9,7 +9,7 @@ type ApplicationSubmittedEmailInput = {
 type ApplicationStatusEmailInput = {
   to: string;
   candidateName?: string;
-  status: "Applied" | "Reviewed" | "Rejected" | "Accepted";
+  status: "Applied" | "Reviewed" | "Shortlisted" | "Interview" | "Rejected" | "Accepted";
   jobTitle?: string;
 };
 

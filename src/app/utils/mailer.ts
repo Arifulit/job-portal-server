@@ -109,7 +109,7 @@ export const sendVerificationEmail = async ({
   const { subject, html, text } = getVerificationEmail({
     name,
     verificationUrl,
-    supportEmail: process.env.SUPPORT_EMAIL || 'support@yourdomain.com'
+    supportEmail: process.env.SUPPORT_EMAIL || 'ariful.iit@gmail.com'
   });
 
   return sendEmail({

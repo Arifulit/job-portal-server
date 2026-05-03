@@ -6,7 +6,6 @@ import applicationRoutes from "../modules/application/routes/applicationRoutes";
 import paymentRoutes from "../modules/payment/routes/paymentRoutes";
 import auditRoutes from "../modules/audit/routes/auditRoutes";
 import companyRoutes from "../modules/company/routes/companyRoutes";
-import recruitmentAgencyRoutes from "../modules/agency/routes/recruitmentAgency.routes";
 import authRoutes from "../modules/auth/routes/authRoutes";
 import recruiterRoutes from "../modules/profile/recruiter/routes";
 import adminRoutes from "../modules/profile/admin/routes";
@@ -42,13 +41,17 @@ router.use("/auth", authRoutes);
 router.use("/candidate", candidateRoutes);
 router.use("/recruiter", recruiterRoutes);
 router.use("/admin", adminRoutes);
+// Alias: /api/v1/users/profile → /api/v1/candidate/profile (for frontend compatibility)
+router.get("/users/profile", (req, res, next) => {
+  req.url = "/candidate/profile";
+  router.handle(req, res, next);
+});
 
 router.use("/jobs", jobRoutes);
 router.use("/applications", applicationRoutes);
 router.use("/payments", paymentRoutes);
 router.use("/audit", auditRoutes);
 router.use("/company", companyRoutes);
-router.use("/agency", recruitmentAgencyRoutes);
 router.use("/salary", salaryRoutes);
 router.use("/messages", messageRoutes);
 router.use("/notifications", notificationRoutes);

@@ -1,6 +1,5 @@
 
 import { NextFunction, Request, Response } from "express";
-import { Types } from "mongoose";
 import * as authService from "../services/authService";
 import { User } from "../models/User";
 import passport from "../../../config/passport";
@@ -8,7 +7,6 @@ import { env } from "../../../config/env";
 import { CandidateProfile } from "../../profile/candidate/models/CandidateProfile";
 import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfile";
 import { AdminProfile } from "../../profile/admin/models/AdminProfile";
-import { RecruitmentAgency } from "../../agency/models/recruitmentAgency.model";
 import Company from "../../company/models/Company";
 
 const ACCESS_TTL = "24h";
@@ -23,6 +21,7 @@ const hasGoogleOAuthConfig = Boolean(
 const isProduction = process.env.NODE_ENV === "production";
 
 const COOKIE_BASE = {
+  path: "/",
   httpOnly: true,
   secure: isProduction,
   sameSite: "lax" as const,
@@ -34,7 +33,7 @@ const mask = (value: string, visiblePrefix = 6, visibleSuffix = 4) => {
   return `${value.slice(0, visiblePrefix)}***${value.slice(-visibleSuffix)}`;
 };
 
-const toAuthUserPayload = (user: any) => {
+const toAuthUserPayload = (user: Record<string, unknown>) => {
   const base = {
     _id: user._id,
     id: user._id,
@@ -62,7 +61,7 @@ const toAuthUserPayload = (user: any) => {
 export const register = async (req: Request, res: Response) => {
   try {
     const {
-      name, email, password, role, phone, designation, agency,
+      name, email, password, role, phone, designation,
       companyName, yearOfEstablishment, companyAddress, industryType,
       websiteUrl, skills, biodata, location,
     } = req.body;
@@ -71,8 +70,8 @@ export const register = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: "Name, email, and password are required" });
     }
 
-    const user = await authService.registerUser(name, email, password, role as any);
-    if (role === "recruiter") (user as any).isRecruiterApproved = false;
+    const user = await authService.registerUser(name, email, password, (role || "candidate") as "candidate" | "recruiter" | "admin");
+    if (role === "recruiter") (user as Record<string, unknown>).isRecruiterApproved = false;
 
     const userId = user._id.toString();
 
@@ -94,15 +93,7 @@ export const register = async (req: Request, res: Response) => {
           { $set: { industry: String(industryType).trim(), website: String(websiteUrl).trim(), address: String(companyAddress).trim(), yearOfEstablishment: Number(yearOfEstablishment) }, $setOnInsert: { name: normalizedCompanyName, isVerified: false } },
           { new: true, upsert: true },
         );
-        let agencyId = agency;
-        if (!agencyId || !Types.ObjectId.isValid(agencyId)) {
-          let agencyDoc = await RecruitmentAgency.findOne({ name: { $regex: `^${normalizedCompanyName}$`, $options: "i" } });
-          if (!agencyDoc) {
-            agencyDoc = await RecruitmentAgency.create({ name: normalizedCompanyName, website: String(websiteUrl).trim(), industry: String(industryType).trim() });
-          }
-          agencyId = agencyDoc._id;
-        }
-        await RecruiterProfile.create({ user: userId, phone, designation, bio: String(biodata).trim(), location: String(location).trim(), agency: agencyId, company: companyDoc._id });
+        await RecruiterProfile.create({ user: userId, phone, designation, bio: String(biodata).trim(), location: String(location).trim(), company: companyDoc._id });
         break;
       }
 
@@ -128,8 +119,8 @@ export const register = async (req: Request, res: Response) => {
       message: role === "recruiter" ? "Recruiter registered successfully. Waiting for admin approval." : "Registration successful",
       data: { user: toAuthUserPayload(user), accessToken, refreshToken },
     });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message || "Registration failed" });
+  } catch (error: Error | unknown) {
+    res.status(400).json({ success: false, message: (error as Error).message || "Registration failed" });
   }
 };
 
@@ -148,8 +139,8 @@ export const login = async (req: Request, res: Response) => {
     res.cookie("accessToken", accessToken, { ...COOKIE_BASE, maxAge: ACCESS_COOKIE_MAXAGE });
 
     res.status(200).json({ success: true, data: { user: toAuthUserPayload(user), accessToken, refreshToken } });
-  } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message || "Login failed. Please check your credentials." });
+  } catch (error: Error | unknown) {
+    res.status(400).json({ success: false, message: (error as Error).message || "Login failed. Please check your credentials." });
   }
 };
 
@@ -185,12 +176,12 @@ export const googleCallback = (req: Request, res: Response, next: NextFunction) 
     return res.status(503).json({ success: false, message: "Google login is not configured." });
   }
 
-  passport.authenticate("google", { session: false }, async (error: Error | null, user: any) => {
+  passport.authenticate("google", { session: false }, async (error: Error | null, user: Record<string, unknown> | null) => {
     if (error || !user) {
       return res.status(401).json({ success: false, message: error?.message || "Google authentication failed" });
     }
 
-    const userId = user._id.toString();
+    const userId = (user._id as Record<string, { toString: () => string }>)?.toString() || String(user._id);
 
     if (user.role === "candidate") {
       const existingProfile = await CandidateProfile.findOne({ user: userId });
@@ -206,6 +197,7 @@ export const googleCallback = (req: Request, res: Response, next: NextFunction) 
     // refreshToken httpOnly থাকে (server-side only)
     res.cookie(REFRESH_COOKIE_NAME, refreshToken, { ...COOKIE_BASE, maxAge: REFRESH_COOKIE_MAXAGE });
     res.cookie("accessToken", accessToken, {
+      path: "/",
       httpOnly: false,          // frontend Cookies.get() দিয়ে পড়বে
       secure: isProduction,
       sameSite: "lax",
@@ -232,8 +224,8 @@ export const forgotPassword = async (req: Request, res: Response) => {
     if (!email) return res.status(400).json({ success: false, message: "Email is required" });
     await authService.requestPasswordReset(email);
     return res.status(200).json({ success: true, message: "If that email is registered, a password reset link has been sent." });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message || "Failed to process request" });
+  } catch (error: Error | unknown) {
+    return res.status(400).json({ success: false, message: (error as Error).message || "Failed to process request" });
   }
 };
 
@@ -243,8 +235,8 @@ export const resetPassword = async (req: Request, res: Response) => {
     if (!token || !password) return res.status(400).json({ success: false, message: "Token and new password are required" });
     await authService.resetPassword(token, password);
     return res.status(200).json({ success: true, message: "Password has been reset successfully" });
-  } catch (error: any) {
-    return res.status(400).json({ success: false, message: error.message || "Failed to reset password" });
+  } catch (error: Error | unknown) {
+    return res.status(400).json({ success: false, message: (error as Error).message || "Failed to request password reset" });
   }
 };
 
@@ -253,8 +245,8 @@ export const refresh = async (req: Request, res: Response) => {
     const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.body.refreshToken;
     if (!refreshToken) return res.status(401).json({ success: false, message: "Refresh token is required" });
 
-    const decoded: any = authService.verifyRefreshToken(refreshToken);
-    const userId = decoded.id;
+    const decoded: Record<string, unknown> = authService.verifyRefreshToken(refreshToken);
+    const userId = decoded.id as string;
     if (!userId) return res.status(401).json({ success: false, message: "Invalid refresh token" });
 
     const user = await User.findById(userId);
@@ -264,10 +256,10 @@ export const refresh = async (req: Request, res: Response) => {
     const newRefreshToken = authService.generateRefreshToken(userId);
 
     res.cookie(REFRESH_COOKIE_NAME, newRefreshToken, { ...COOKIE_BASE, maxAge: REFRESH_COOKIE_MAXAGE });
-    res.cookie("accessToken", newAccessToken, { httpOnly: false, secure: isProduction, sameSite: "lax", maxAge: ACCESS_COOKIE_MAXAGE });
+    res.cookie("accessToken", newAccessToken, { path: "/", httpOnly: false, secure: isProduction, sameSite: "lax", maxAge: ACCESS_COOKIE_MAXAGE });
 
     res.status(200).json({ success: true, data: { accessToken: newAccessToken, refreshToken: newRefreshToken } });
-  } catch (_error: any) {
+  } catch {
     res.status(401).json({ success: false, message: "Invalid refresh token" });
   }
 };
@@ -275,9 +267,9 @@ export const refresh = async (req: Request, res: Response) => {
 export const logout = async (req: Request, res: Response) => {
   try {
     res.clearCookie(REFRESH_COOKIE_NAME, COOKIE_BASE);
-    res.clearCookie("accessToken", { ...COOKIE_BASE, httpOnly: false });
+    res.clearCookie("accessToken", { ...COOKIE_BASE, httpOnly: false, path: "/" });
     res.status(200).json({ success: true, message: "Successfully logged out" });
-  } catch (_error: any) {
+  } catch {
     res.status(500).json({ success: false, message: "Logout failed" });
   }
 };
@@ -299,17 +291,28 @@ export const me = async (req: Request, res: Response) => {
 
     if (!token) return res.status(401).json({ success: false, message: "Authentication token is required" });
 
-    const decoded: any = authService.verifyToken(token);
+    const decoded: Record<string, unknown> = authService.verifyToken(token);
     const userId = decoded.id;
     if (!userId) return res.status(401).json({ success: false, message: "Invalid token" });
 
     const user = await User.findById(userId).lean();
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-    let profile: any = null;
+    let profile: Record<string, unknown> | null = null;
     switch (user.role) {
       case "candidate":
         profile = await CandidateProfile.findOne({ user: userId }).lean();
+        if (!profile) {
+          const createdProfile = await CandidateProfile.create({
+            user: userId,
+            name: user.name || "",
+            phone: "",
+            bio: "",
+            address: "",
+            skills: [],
+          });
+          profile = createdProfile.toObject();
+        }
         break;
       case "recruiter":
         profile = await RecruiterProfile.findOne({ user: userId }).lean();
@@ -324,13 +327,13 @@ export const me = async (req: Request, res: Response) => {
       id: user._id,
       name: user.name,
       email: user.email,
-      avatar: (user as any).avatar ?? "",
+      avatar: (user as Record<string, unknown>).avatar ?? "",
       role: user.role,
       ...(user.role === "recruiter"
         ? {
-            isRecruiterApproved: (user as any).isRecruiterApproved ?? false,
-            recruiterApprovedAt: (user as any).recruiterApprovedAt ?? null,
-            recruiterApprovedBy: (user as any).recruiterApprovedBy ?? null,
+            isRecruiterApproved: (user as Record<string, unknown>).isRecruiterApproved ?? false,
+            recruiterApprovedAt: (user as Record<string, unknown>).recruiterApprovedAt ?? null,
+            recruiterApprovedBy: (user as Record<string, unknown>).recruiterApprovedBy ?? null,
           }
         : {}),
       profile,
@@ -339,7 +342,7 @@ export const me = async (req: Request, res: Response) => {
     // FIX 2: { data: { user: ... } } shape — frontend এর extractAuthData এবং
     // setUserFromToken দুটোই payload.data?.user থেকে read করে
     return res.status(200).json({ success: true, data: { user: userResponse } });
-  } catch (error: any) {
-    return res.status(401).json({ success: false, message: error.message || "Invalid or expired token" });
+  } catch (error: Error | unknown) {
+    return res.status(401).json({ success: false, message: (error as Error).message || "Invalid or expired token" });
   }
 };

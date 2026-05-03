@@ -2,9 +2,7 @@ import { Job } from "../../job/models/Job";
 import { Application } from "../../application/models/Application";
 import { Notification } from "../../notification/models/Notification";
 import { CandidateProfile } from "../../profile/candidate/models/CandidateProfile";
-import { Resume } from "../../profile/candidate/models/Resume";
 import { analyzeResumeWithOpenAI } from "../../../integrations/openai/resumeParser";
-import { getJobRecommendations } from "../../../integrations/openai/jobRecommender";
 import OpenAI from "openai";
 
 // Job Stats
@@ -79,17 +77,6 @@ export const rankApplicantsForJob = async (jobId: string) => {
   return ranked;
 };
 
-// 2. Skill Gap Analysis
-export const getSkillGapForUserAndJob = async (userId: string, jobId: string) => {
-  const profile = await CandidateProfile.findOne({ user: userId }).lean();
-  const job = await Job.findById(jobId).lean();
-  if (!profile || !job) throw new Error("Profile or Job not found");
-  const userSkills = profile.skills || [];
-  const jobSkills = job.skills || [];
-  const missingSkills = jobSkills.filter((s: string) => !userSkills.includes(s));
-  return { missingSkills };
-};
-
 // 3. AI Resume Builder
 export const generateResumeFromProfile = async (userId: string) => {
   const profile = await CandidateProfile.findOne({ user: userId }).lean();
@@ -111,24 +98,108 @@ export const generateResumeFromProfile = async (userId: string) => {
   return { resumeMarkdown };
 };
 
+type SalaryRange = {
+  currency: string;
+  min: number;
+  median: number;
+  max: number;
+  breakdown: {
+    baseSalary: number;
+    experienceBonus: number;
+    skillsBonus: number;
+    premiumSkillBonus: number;
+    locationMultiplier: number;
+    seniorityBonus: number;
+    premiumSkillCount: number;
+  };
+  salaryText: string;
+};
+
+function getTotalExperienceYears(experience: unknown): number {
+  if (!Array.isArray(experience)) return 0;
+
+  return experience.reduce((total, item) => {
+    const entry = item as Record<string, unknown>;
+    const years = typeof entry.yearsOfExperience === "number"
+      ? entry.yearsOfExperience
+      : typeof entry.years === "number"
+        ? entry.years
+        : 0;
+
+    return total + years;
+  }, 0);
+}
+
+function getSalaryLocationMultiplier(location: string): number {
+  const normalizedLocation = location.trim().toLowerCase();
+
+  if (!normalizedLocation) return 1;
+  if (normalizedLocation.includes("remote")) return 1.15;
+  if (normalizedLocation.includes("dhaka")) return 1.1;
+  if (normalizedLocation.includes("chittagong") || normalizedLocation.includes("chattogram")) return 1.05;
+  if (normalizedLocation.includes("sylhet")) return 1.02;
+
+  return 1;
+}
+
+function calculateSalaryRangeFromProfile(profile: Record<string, unknown>, job?: Record<string, unknown> | null): SalaryRange {
+  const skills = Array.isArray(profile.skills) ? profile.skills.map((skill) => String(skill).toLowerCase()) : [];
+  const experienceYears = getTotalExperienceYears(profile.experience);
+  const location = String(job?.location || profile.address || "");
+
+  const baseSalary = 20000;
+  const experienceBonus = Math.min(experienceYears, 20) * 5000;
+
+  const premiumSkills = ["react", "node", "node.js", "typescript", "python", "aws", "docker"];
+  const premiumSkillCount = skills.filter((skill) => premiumSkills.includes(skill)).length;
+  const skillsBonus = skills.length * 2000;
+  const premiumSkillBonus = premiumSkillCount * 5000;
+
+  const locationMultiplier = getSalaryLocationMultiplier(location);
+  const seniorityBonus = experienceYears > 10 ? Math.round((experienceYears - 10) * 2500) : 0;
+
+  const rawMedian = (baseSalary + experienceBonus + skillsBonus + premiumSkillBonus + seniorityBonus) * locationMultiplier;
+  const median = Math.max(0, Math.round(rawMedian));
+  const spread = experienceYears < 2 ? 0.25 : 0.15;
+  const min = Math.round(median * (1 - spread));
+  const max = Math.round(median * (1 + spread));
+
+  const salaryText = `Estimated salary range: ${min.toLocaleString()} - ${max.toLocaleString()} BDT for ${experienceYears} years of experience in ${location || "an unspecified location"}.`;
+
+  return {
+    currency: "BDT",
+    min,
+    median,
+    max,
+    breakdown: {
+      baseSalary,
+      experienceBonus,
+      skillsBonus,
+      premiumSkillBonus,
+      locationMultiplier,
+      seniorityBonus,
+      premiumSkillCount,
+    },
+    salaryText,
+  };
+}
+
 // 4. Salary Prediction
 export const predictSalary = async (userId: string, jobId?: string) => {
   const profile = await CandidateProfile.findOne({ user: userId }).lean();
-  let job = null;
-  if (jobId) job = await Job.findById(jobId).lean();
   if (!profile) throw new Error("Profile not found");
-  // Use OpenAI to predict salary
-  const openai = new OpenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const prompt = `Estimate a fair salary range for a candidate with the following profile${job ? ` applying for this job: ${job.title}, location: ${job.location}` : ""}.\nSkills: ${(profile.skills || []).join(", ")}\nExperience: ${(profile.experience || []).map(e => `${e.role} at ${e.company}`).join("; ")}\nLocation: ${profile.address || "N/A"}`;
-  const completion = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
-    messages: [
-      { role: "system", content: "You are a salary prediction assistant." },
-      { role: "user", content: prompt },
-    ],
-    temperature: 0.2,
-    max_tokens: 200,
-  });
-  const salaryText = completion.choices[0]?.message?.content || "";
-  return { salaryText };
+
+  const job = jobId ? await Job.findById(jobId).lean() : null;
+  const salaryRange = calculateSalaryRangeFromProfile(profile as Record<string, unknown>, job as Record<string, unknown> | null);
+
+  return {
+    ...salaryRange,
+    job: job
+      ? {
+          id: String(job._id),
+          title: String(job.title || ""),
+          location: String(job.location || ""),
+        }
+      : undefined,
+  };
 };

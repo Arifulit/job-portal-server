@@ -59,7 +59,7 @@ const resumeUploadMiddleware = (req: Request, res: Response, next: NextFunction)
   resumeUpload.fields([
     { name: "resume", maxCount: 1 },
     { name: "file", maxCount: 1 },
-  ])(req, res, (error: any) => {
+  ])(req, res, (error: unknown) => {
     if (!error) {
       next();
       return;
@@ -67,21 +67,24 @@ const resumeUploadMiddleware = (req: Request, res: Response, next: NextFunction)
 
     if (error instanceof multer.MulterError) {
       if (error.code === "LIMIT_FILE_SIZE") {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "Resume file must be within 5MB",
         });
+        return;
       }
 
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: error.message,
       });
+      return;
     }
 
-    return res.status(400).json({
+    const errorMsg = error instanceof Error ? error.message : "Resume upload failed";
+    res.status(400).json({
       success: false,
-      message: error.message || "Resume upload failed",
+      message: errorMsg,
     });
   });
 };

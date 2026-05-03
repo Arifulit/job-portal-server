@@ -14,7 +14,7 @@ async function sleep(ms: number) {
 
 export async function scoreCandidateWithAI(
   jobDescription: string,
-  candidate: { name: string; skills?: string[]; experience?: number; [key: string]: any }
+  candidate: { name: string; skills?: string[]; experience?: number; [key: string]: unknown }
 ): Promise<{ score: number; reasons: string[] }> {
   const genAI = getGeminiClient();
   const model = genAI.getGenerativeModel({
@@ -36,22 +36,24 @@ Job Description: ${jobDescription}
 
 Candidate:
 - Name: ${candidate.name}
-- Skills: ${(candidate.skills || []).join(", ") || "N/A"}
-- Experience: ${candidate.experience ?? 0} years
+- Skills: ${(candidate.skills as string[] | undefined)?.join(", ") || "N/A"}
+- Experience: ${(candidate.experience as number | undefined) ?? 0} years
 
 Rules:
 - score = how well this candidate fits the job (0-100)
 - reasons = 3 short bullet points explaining the score (strengths & gaps)`;
 
-  let lastError: any;
+  let lastError: Error | null = null;
 
   // resilient parsing + optional clarifying retry
-  const tryParseJson = (text: string): any | null => {
+  const tryParseJson = (text: string): Record<string, unknown> | null => {
     if (!text) return null;
     const cleaned = text.replace(/```json|```/g, "").trim();
     try {
       return JSON.parse(cleaned);
-    } catch {}
+    } catch {
+      // JSON parse failed, try alternative method
+    }
 
     // extract first JSON-looking object
     const objMatch = cleaned.match(/\{[\s\S]*\}/);
@@ -60,16 +62,18 @@ Rules:
       candidate = candidate.replace(/,\s*(}|\])/g, "$1");
       try {
         return JSON.parse(candidate);
-      } catch {}
+      } catch {
+        // Parse attempt failed
+      }
     }
 
     // best-effort: parse simple key: value lines
     const lines = cleaned.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const approx: any = {};
+    const approx: Record<string, unknown> = {};
     for (const line of lines) {
       const kv = line.split(/:\s*/);
       if (kv.length >= 2) {
-        const key = kv[0].replace(/^[-\s\"]+|[\s\".]+$/g, "");
+        const key = kv[0].replace(/^[-\s"]+|[\s".]+ $/g, "");
         let val = kv.slice(1).join(": ").trim();
         if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
           val = val.slice(1, -1);
@@ -110,10 +114,12 @@ Rules:
       }
 
       throw new Error("AI returned invalid JSON. Please try again.");
-    } catch (error: any) {
-      lastError = error;
-      const status = error?.status || error?.httpStatusCode;
-      const message = (error?.message || "").toLowerCase();
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const status = (error && typeof error === 'object' && ('status' in error || 'httpStatusCode' in error)) 
+        ? ((error as Record<string, unknown>).status || (error as Record<string, unknown>).httpStatusCode) 
+        : undefined;
+      const message = (error && typeof error === 'object' && 'message' in error) ? String((error as Record<string, unknown>).message).toLowerCase() : "";
 
       if (status === 429 || message.includes("quota") || message.includes("rate limit")) {
         const waitMs = attempt * 3000;
@@ -122,7 +128,7 @@ Rules:
         continue;
       }
 
-      if (status >= 500) {
+      if (typeof status === 'number' && status >= 500) {
         await sleep(attempt * 2000);
         continue;
       }

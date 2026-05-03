@@ -30,15 +30,24 @@ export const uploadResume = async (data: any) => {
     }
     
     console.log("📝 Service: Processed resume data:", data);
+    const setPayload: any = {
+      fileUrl: data.fileUrl,
+      fileName: data.fileName,
+      candidate: data.candidate,
+    };
+
+    // Optional analysis fields
+    if (typeof data.score !== 'undefined') setPayload.score = data.score;
+    if (data.scoreBreakdown) setPayload.scoreBreakdown = data.scoreBreakdown;
+    if (Array.isArray(data.extractedSkills)) setPayload.extractedSkills = data.extractedSkills;
+    if (Array.isArray(data.missingSkills)) setPayload.missingSkills = data.missingSkills;
+    if (Array.isArray(data.suggestions)) setPayload.suggestions = data.suggestions;
+    if (Array.isArray(data.strengths)) setPayload.strengths = data.strengths;
+    if (data.analyzedAt) setPayload.analyzedAt = data.analyzedAt;
+
     const resume = await Resume.findOneAndUpdate(
       { candidate: data.candidate },
-      {
-        $set: {
-          fileUrl: data.fileUrl,
-          fileName: data.fileName,
-          candidate: data.candidate,
-        },
-      },
+      { $set: setPayload },
       { new: true, upsert: true, runValidators: true }
     );
     console.log("✅ Service: Resume uploaded successfully:", resume?._id);
@@ -73,6 +82,26 @@ export const getResumeByCandidate = async (candidateId: string) => {
     return resume;
   } catch (error: any) {
     console.error("❌ Service Error (get resume):", error.message);
+    throw error;
+  }
+};
+
+export const setResumeAnalysis = async (resumeId: string, analysis: any) => {
+  try {
+    if (!resumeId) throw new Error('resumeId required');
+    const update: any = {};
+    if (typeof analysis.score !== 'undefined') update.score = analysis.score;
+    if (analysis.scoreBreakdown) update.scoreBreakdown = analysis.scoreBreakdown;
+    if (Array.isArray(analysis.extractedSkills)) update.extractedSkills = analysis.extractedSkills;
+    if (Array.isArray(analysis.missingSkills)) update.missingSkills = analysis.missingSkills;
+    if (Array.isArray(analysis.suggestions)) update.suggestions = analysis.suggestions;
+    if (Array.isArray(analysis.strengths)) update.strengths = analysis.strengths;
+    update.analyzedAt = new Date();
+
+    const resume = await Resume.findByIdAndUpdate(resumeId, { $set: update }, { new: true });
+    return resume;
+  } catch (error: any) {
+    console.error('❌ Service Error (setResumeAnalysis):', error.message);
     throw error;
   }
 };

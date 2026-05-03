@@ -2,13 +2,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import candidateProfileRoutes from "./candidateProfileRoutes";
 import candidateRankingRoutes from "./candidateRankingRoutes";
-import candidateSkillGapRoutes from "./candidateSkillGapRoutes";
-import { 
-  createCandidateProfileController, 
-  getCurrentCandidateProfileController,
-  updateCurrentCandidateProfileController
-} from "../controllers/candidateProfileController";
-import authMiddleware, { optionalAuth } from "../../../../middleware/auth";
+import authMiddleware from "../../../../middleware/auth";
 import asyncHandler from "../../../../utils/asyncHandler";
 import { getCandidateDashboardStatsController } from "../../../analytics/controllers/dashboardStatsController";
 import { getApprovedJobs } from "../../../job/controllers/jobController";
@@ -23,8 +17,6 @@ router.use((req: Request, res: Response, next: NextFunction) => {
 
 // Mount candidate ranking API
 router.use("/candidates", candidateRankingRoutes);
-// Mount candidate skill-gap API
-router.use("/candidates", candidateSkillGapRoutes);
 
 // Mount profile sub-routes at /profile path
 // This makes: GET /api/v1/candidate/profile, POST /api/v1/candidate/profile, GET /api/v1/candidate/profile/:userId, etc.
@@ -33,10 +25,15 @@ router.use("/profile", candidateProfileRoutes);
 // Resume upload depends on Cloudinary and is disabled on Vercel serverless.
 const isVercelDeployment = process.env.VERCEL === "1" || process.env.VERCEL === "true";
 if (!isVercelDeployment) {
-  // Lazy-load to keep the Cloudinary dependency out of the startup path.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const resumeRoutes = require("./resumeRoutes").default as Router;
-  router.use("/resume", resumeRoutes);
+  try {
+    // Lazy-load to keep the Cloudinary dependency out of the startup path.
+    // Note: This require() is intentional for dynamic lazy-loading on Vercel
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { default: resumeRoutes } = require("./resumeRoutes") as { default: Router };
+    router.use("/resume", resumeRoutes);
+  } catch (err) {
+    console.warn("Resume routes could not be loaded:", err);
+  }
 }
 
 // Candidate job list: GET /api/v1/candidate/jobs

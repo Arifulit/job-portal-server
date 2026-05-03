@@ -12,8 +12,7 @@ export const createRecruiterProfile = async (data: CreateRecruiterProfileDTO) =>
 export const getRecruiterProfile = async (userId: string) => {
   return await RecruiterProfile.findOne({ user: userId })
     .populate("user", "name email role avatar")
-    .populate("agency")
-    .populate("company")
+    .populate("company", "name industry size yearOfEstablishment address location website logo email phone description isVerified verifiedAt verifiedBy createdAt updatedAt")
     .lean();
 };
 
@@ -43,7 +42,7 @@ export const updateRecruiterProfile = async (userId: string, data: any) => {
   delete normalizedRest.role;
   delete normalizedRest.user;
 
-  const allowedProfileFields = ["phone", "designation", "agency", "company", "bio", "location"];
+  const allowedProfileFields = ["phone", "designation", "company", "bio", "location"];
   const profileUpdates = Object.fromEntries(
     Object.entries(normalizedRest).filter(([key, value]) => allowedProfileFields.includes(key) && value !== undefined)
   );
@@ -54,8 +53,7 @@ export const updateRecruiterProfile = async (userId: string, data: any) => {
     { new: true, runValidators: true }
   )
   .populate('user', 'name email role avatar')
-  .populate('agency')
-  .populate('company')
+  .populate('company', 'name industry size yearOfEstablishment address location website logo email phone description isVerified verifiedAt verifiedBy createdAt updatedAt')
   .lean();
   
   if (!profile) {

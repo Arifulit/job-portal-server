@@ -8,16 +8,18 @@ const hasGoogleOAuthConfig = Boolean(
   env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CALLBACK_URL,
 );
 
-passport.serializeUser((user: any, done) => {
+passport.serializeUser((user: { _id?: string; id?: string }, done) => {
   done(null, user._id ?? user.id);
 });
 
 passport.deserializeUser(async (id: string, done) => {
   try {
     const user = await User.findById(id).select("+password");
-    done(null, user as any);
+    if (!user) return done(null, null);
+    const userData = user.toObject?.() || user;
+    done(null, { id: user._id.toString(), ...userData } as unknown as Express.User);
   } catch (err) {
-    done(err as any);
+    done(err as Error);
   }
 });
 
@@ -52,7 +54,7 @@ if (hasGoogleOAuthConfig) {
             avatar,
           });
 
-          return done(null, user as any);
+          return done(null, user ? { ...user, id: user._id?.toString() || user.id } as unknown as Express.User : undefined);
         } catch (error) {
           return done(error as Error);
         }

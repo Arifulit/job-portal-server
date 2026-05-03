@@ -6,6 +6,57 @@ import { Resume } from "../models/Resume";
 import { User } from "../../../auth/models/User";
 import cloudinary from "../../../../config/cloudinary";
 
+const parseMaybeJson = (value: unknown): unknown => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return value;
+  }
+
+  if (
+    (trimmed.startsWith("[") && trimmed.endsWith("]")) ||
+    (trimmed.startsWith("{") && trimmed.endsWith("}"))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+};
+
+const normalizeCandidateProfileFormData = (body: Record<string, unknown>) => {
+  const normalized = { ...body } as Record<string, unknown>;
+
+  normalized.skills = Array.isArray(normalized.skills)
+    ? normalized.skills
+    : parseMaybeJson(normalized.skills);
+  normalized.experience = Array.isArray(normalized.experience)
+    ? normalized.experience
+    : parseMaybeJson(normalized.experience);
+  normalized.education = Array.isArray(normalized.education)
+    ? normalized.education
+    : parseMaybeJson(normalized.education);
+
+  if (typeof normalized.name === "string") normalized.name = normalized.name.trim();
+  if (typeof normalized.phone === "string") normalized.phone = normalized.phone.trim();
+  if (typeof normalized.address === "string") normalized.address = normalized.address.trim();
+  if (typeof normalized.bio === "string") normalized.bio = normalized.bio.trim();
+
+  delete normalized.biodata;
+  delete normalized.location;
+  delete normalized.role;
+  delete normalized.user;
+  delete normalized.resume;
+
+  return normalized;
+};
+
 const buildCandidateUpdatePayload = (body: Record<string, any>) => {
   const payload = { ...body };
 
@@ -30,6 +81,8 @@ const formatCandidateProfileResponse = (profile: any) => {
 
   const userProfile =
     profile.user && typeof profile.user === "object" ? profile.user : undefined;
+  const resumeDetails =
+    profile.resume && typeof profile.resume === "object" ? profile.resume : null;
 
   return {
     ...profile,
@@ -44,6 +97,9 @@ const formatCandidateProfileResponse = (profile: any) => {
     skills: Array.isArray(profile.skills) ? profile.skills : [],
     experience: Array.isArray(profile.experience) ? profile.experience : [],
     education: Array.isArray(profile.education) ? profile.education : [],
+    resumeDetails,
+    resumeFileUrl: resumeDetails?.fileUrl ?? "",
+    resumeFileName: resumeDetails?.fileName ?? "",
   };
 };
 
@@ -176,17 +232,25 @@ export const createCandidateProfileController = async (req: Request, res: Respon
     let uploadedResume: { fileUrl: string; fileName: string } | undefined;
 
     if (avatarFile) {
-      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+      try {
+        uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+      } catch (uploadError) {
+        console.warn("Avatar upload failed, continuing without avatar update:", uploadError);
+      }
     }
 
     if (resumeFile) {
-      uploadedResume = await uploadResumeToCloudinary(resumeFile);
+      try {
+        uploadedResume = await uploadResumeToCloudinary(resumeFile);
+      } catch (uploadError) {
+        console.warn("Resume upload failed, continuing without resume attachment:", uploadError);
+      }
     }
 
     console.log("🟦 User authenticated, userId:", userId);
     
     // Prepare profile data with authenticated user ID
-    const profileData = {
+    const profileData = normalizeCandidateProfileFormData({
       user: userId,
       name: req.body.name || "",
       phone: req.body.phone || "",
@@ -196,9 +260,8 @@ export const createCandidateProfileController = async (req: Request, res: Respon
       bio: req.body.bio,
       experience: req.body.experience,
       education: req.body.education,
-      resume: req.body.resume,
-      ...req.body // Spread any other valid fields from the request
-    };
+      ...req.body,
+    });
     
     // Use findOneAndUpdate with upsert: true to create or update
     const profile = await CandidateProfile.findOneAndUpdate(
@@ -380,11 +443,19 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
     let uploadedResume: { fileUrl: string; fileName: string } | undefined;
 
     if (avatarFile) {
-      uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+      try {
+        uploadedAvatarUrl = await uploadAvatarToCloudinary(avatarFile);
+      } catch (uploadError) {
+        console.warn("Avatar upload failed, continuing without avatar update:", uploadError);
+      }
     }
 
     if (resumeFile) {
-      uploadedResume = await uploadResumeToCloudinary(resumeFile);
+      try {
+        uploadedResume = await uploadResumeToCloudinary(resumeFile);
+      } catch (uploadError) {
+        console.warn("Resume upload failed, continuing without resume attachment:", uploadError);
+      }
     }
 
     console.log("🟦 User authenticated, userId:", userId);
@@ -395,7 +466,7 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
     // If profile doesn't exist, create a new one
     if (!profile) {
       console.log("ℹ️  Profile doesn't exist, creating new one");
-      const profileData = {
+      const profileData = normalizeCandidateProfileFormData({
         user: userId,
         name: updatePayload.name || "",
         phone: updatePayload.phone || "",
@@ -406,7 +477,7 @@ export const updateCurrentCandidateProfileController = async (req: Request, res:
         experience: updatePayload.experience || [],
         education: updatePayload.education || [],
         ...updatePayload
-      };
+      });
       
       profile = await candidateProfileService.createCandidateProfile(profileData);
 
