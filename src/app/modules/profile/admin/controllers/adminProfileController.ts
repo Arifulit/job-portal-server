@@ -230,7 +230,7 @@ export const getAdminController = async (req: Request, res: Response) => {
 
     if (!isOwner && !isAdmin) {
       // Return only public profile data
-      const { _id, name, email, avatar } = admin;
+      const { _id, name, email, avatar } = admin!;
       return res.json({ 
         success: true, 
         data: { _id, name, email, avatar } 

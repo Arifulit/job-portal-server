@@ -17,6 +17,7 @@ interface ICandidateEducationItem {
 }
 
 export interface ICandidateProfile {
+  _id: Types.ObjectId;
   user: Types.ObjectId;
   name: string;
   phone: string;

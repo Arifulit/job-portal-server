@@ -1,6 +1,7 @@
 import { Schema, model, Types } from "mongoose";
 
 export interface IAdminProfile {
+  _id: Types.ObjectId;
   user?: Types.ObjectId;
   name: string;
   email: string;
@@ -13,6 +14,7 @@ export interface IAdminProfile {
   comparePassword?: (candidatePassword: string) => Promise<boolean>;
   createdAt?: Date;
   updatedAt?: Date;
+  __v?: number;
 }
 
 const adminProfileSchema = new Schema<IAdminProfile>({

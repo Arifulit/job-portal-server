@@ -1,12 +1,14 @@
 import { Schema, model, Types } from "mongoose";
 
 export interface IRecruiterProfile {
+  _id: Types.ObjectId;
   user: Types.ObjectId;
   company?: Types.ObjectId;
   designation: string;
   phone: string;
   bio?: string;
   location?: string;
+  __v?: number;
 }
 
 const recruiterProfileSchema = new Schema<IRecruiterProfile>({
