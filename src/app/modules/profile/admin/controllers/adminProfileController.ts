@@ -3,7 +3,7 @@ import fs from "fs";
 import { AuthenticatedRequest } from "../../../../../types/express";
 import * as adminService from "../services/adminProfileService";
 import bcrypt from "bcryptjs";
-import { AdminProfile } from "../models/AdminProfile";
+import { AdminProfile, IAdminProfile } from "../models/AdminProfile";
 import { User } from "../../../auth/models/User";
 import cloudinary from "../../../../config/cloudinary";
 
@@ -179,21 +179,48 @@ export const getAdminController = async (req: Request, res: Response) => {
       });
     }
 
-    // Include all fields except the ones we explicitly exclude
-    const admin = await AdminProfile.findOne({
+    // Get user details for email lookup
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const userEmail = String(user.email || "").toLowerCase();
+
+    // Multi-strategy lookup: by user ID, then by email
+    let admin = await AdminProfile.findOne({
       $or: [
         { user: userId },
-        { _id: userId },
-      ],
+        { email: userEmail }
+      ]
     })
       .select('+password')  // Include password if needed
       .lean();
 
+    // If not found, create a new admin profile (auto-creation for first-time access)
     if (!admin) {
-      return res.status(404).json({
-        success: false,
-        message: "Admin not found"
-      });
+      // Auto-create admin profile if user is admin
+      if (user.role === 'admin') {
+        const createdProfile = await AdminProfile.create({
+          user: userId,
+          name: user.name || "",
+          email: userEmail,
+          role: "Admin",
+          phone: "",
+          biodata: "",
+          location: "",
+          avatar: "",
+        });
+        admin = createdProfile.toObject() as IAdminProfile;
+      } else {
+        return res.status(403).json({
+          success: false,
+          message: "User is not an admin"
+        });
+      }
     }
 
     // If the request is not from the owner or an admin, return limited profile data
@@ -257,11 +284,12 @@ export const updateAdminController = async (req: AuthenticatedRequest, res: Resp
       }
     }
 
-    // Find the admin
+    // Find the admin - multi-strategy lookup by user ID first, then by current email
+    const normalizedEmail = String(req.user.email || "").toLowerCase();
     let admin = await AdminProfile.findOne({
       $or: [
         { user: adminId },
-        { _id: adminId },
+        { email: normalizedEmail }
       ],
     });
 

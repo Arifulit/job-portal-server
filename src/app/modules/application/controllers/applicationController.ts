@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // এই controller application request handle করে auth check সহ service call চালায়।
-import { Request, Response, RequestHandler, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import * as applicationService from "../services/applicationService";
 import { Job } from "../../job/models/Job";
 import { Application } from "../models/Application";
 import { User } from "../../auth/models/User";
 import { Types, Document } from "mongoose";
-import { RecruiterProfile } from "../../profile/recruiter/models/RecruiterProfile";
 import { CandidateProfile } from "../../profile/candidate/models/CandidateProfile";
 import { Resume } from "../../profile/candidate/models/Resume";
 import { createNotification } from "../../notification/services/notificationService";
@@ -191,30 +190,6 @@ const toIdString = (value: any): string | null => {
     if (str !== "[object Object]") return str;
   }
   return null;
-};
-
-// ✅ Recruiter-এর organization ID বের করো (profile থেকে fallback সহ)
-const resolveRecruiterOrgId = async (user: any): Promise<string | null> => {
-  const directOrgId =
-    toIdString(user?.company) ||
-    toIdString(user?.companyId) ||
-    toIdString(user?.agency) ||
-    toIdString(user?.agencyId);
-
-  if (directOrgId) return directOrgId;
-
-  const authUserId = toIdString(user?._id) || toIdString(user?.id);
-  if (!authUserId) return null;
-
-  const recruiterProfile = await RecruiterProfile.findOne({ user: authUserId })
-    .select("company agency")
-    .lean();
-
-  return (
-    toIdString((recruiterProfile as any)?.company) ||
-    toIdString((recruiterProfile as any)?.agency) ||
-    null
-  );
 };
 
 const getLatestCandidateResumeUrl = async (

@@ -126,14 +126,8 @@ export const authMiddleware = (allowedRoles?: string[]): RequestHandler => {
             next();
             return;
           }
-          // If user is a recruiter, allow access to admin routes
-          if (userRole === 'recruiter' && allowed.includes('admin')) {
-            authDebugLog("✅ Recruiter has admin access");
-            next();
-            return;
-          }
           // Check if user has any of the allowed roles
-          else if (userRole && allowed.includes(userRole)) {
+          if (userRole && allowed.includes(userRole)) {
             authDebugLog(`✅ Access granted for role: ${userRole}`);
             next();
             return;

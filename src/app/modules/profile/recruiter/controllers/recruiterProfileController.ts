@@ -8,13 +8,25 @@ const formatRecruiterProfileResponse = (profile: any) => {
   if (!profile) return profile;
 
   const companyDetails = profile.company ?? null;
+  const userData = profile.user ?? {};
 
   return {
-    ...profile,
-    avatar: profile.avatar ?? profile.user?.avatar ?? "",
+    _id: profile._id,
+    name: userData.name ?? profile.name ?? "",
+    email: userData.email ?? profile.email ?? "",
+    avatar: profile.avatar ?? userData.avatar ?? "",
+    phone: profile.phone ?? "",
+    designation: profile.designation ?? "",
     biodata: profile.biodata ?? profile.bio ?? "",
     location: profile.location ?? "",
+    role: userData.role ?? "recruiter",
+    company: companyDetails,
     companyDetails,
+    jobsPosted: profile.jobsPosted ?? 0,
+    applicantsCount: profile.applicantsCount ?? 0,
+    hires: profile.hires ?? 0,
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
   };
 };
 

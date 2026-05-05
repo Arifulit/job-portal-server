@@ -318,7 +318,25 @@ export const me = async (req: Request, res: Response) => {
         profile = await RecruiterProfile.findOne({ user: userId }).lean();
         break;
       case "admin":
-        profile = await AdminProfile.findOne({ user: userId }).lean();
+        profile = await AdminProfile.findOne({
+          $or: [
+            { user: userId },
+            { email: String(user.email || "").toLowerCase() },
+          ],
+        }).lean();
+        if (!profile) {
+          const createdProfile = await AdminProfile.create({
+            user: userId,
+            name: user.name || "",
+            email: String(user.email || "").toLowerCase(),
+            role: "Admin",
+            phone: "",
+            biodata: "",
+            location: "",
+            avatar: "",
+          });
+          profile = createdProfile.toObject() as IAdminProfile;
+        }
         break;
     }
 

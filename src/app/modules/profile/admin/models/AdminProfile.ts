@@ -69,7 +69,7 @@ const adminProfileSchema = new Schema<IAdminProfile>({
 }, { 
   timestamps: true,
   toJSON: {
-    transform: function(doc, ret: Record<string, any>) {
+    transform: function(_doc, ret: Record<string, unknown>) {
       delete ret.password;
       delete ret.__v;
       return ret;
@@ -98,8 +98,8 @@ adminProfileSchema.pre('save', async function(next) {
       this.password = await (await import('bcryptjs')).hash(this.password, salt);
     }
     next();
-  } catch (error: any) {
-    next(error);
+  } catch (error: unknown) {
+    next(error as Error);
   }
 });
 

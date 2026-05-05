@@ -120,11 +120,6 @@ const buildJobListFilters = (query: AuthenticatedRequest["query"]) => {
     ...(typeof salaryMax === "number" ? { salaryMax } : {}),
   };
 
-  if (!status && typeof isApproved !== "boolean") {
-    filters.status = "approved";
-    filters.isApproved = true;
-  }
-
   return filters;
 };
 
@@ -182,16 +177,6 @@ export const getJobById = async (
         return res.status(403).json({
           success: false,
           message: "Recruiters can only view jobs they posted",
-        });
-      }
-    }
-
-    // Guests and candidates should only see approved jobs.
-    if (!req.user || userRole === "candidate") {
-      if ((job as any).status !== "approved" || !(job as any).isApproved) {
-        return res.status(404).json({
-          success: false,
-          message: "Job not found",
         });
       }
     }
